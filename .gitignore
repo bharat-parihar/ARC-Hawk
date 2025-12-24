@@ -179,3 +179,7 @@ lineage.json
 node_modules/
 .next/
 .turbo/
+
+# Sensitive configs
+apps/scanner/config/connection.yml
+connection.yml
