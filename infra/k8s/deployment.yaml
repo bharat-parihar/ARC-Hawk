@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arc-backend
+  namespace: arc-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: arc-backend
+  template:
+    metadata:
+      labels:
+        app: arc-backend
+    spec:
+      containers:
+      - name: backend
+        image: arc-backend:latest
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: arc-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: arc-backend
+  namespace: arc-platform
+spec:
+  selector:
+    app: arc-backend
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
