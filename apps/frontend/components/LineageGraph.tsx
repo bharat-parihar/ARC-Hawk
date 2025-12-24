@@ -35,9 +35,9 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
     dagreGraph.setDefaultEdgeLabel(() => ({}));
 
     dagreGraph.setGraph({
-        rankdir: 'TB', // Top-to-Bottom for better hierarchy visualization
+        rankdir: 'LR', // Left-to-Right for traditional lineage flow
         nodesep: 80,   // Increased node separation
-        ranksep: 120,  // Increased rank separation
+        ranksep: 150,  // Increased rank separation
         edgesep: 30,   // Increased edge separation
         marginx: 50,
         marginy: 50
@@ -258,7 +258,7 @@ export default function LineageGraph({ nodes: graphNodes, edges: graphEdges, lev
         <ReactFlowProvider>
             <div className="section" style={{
                 padding: 0,
-                height: 700,
+                height: 650,
                 position: 'relative',
                 background: '#f8fafc',
                 borderRadius: 12,

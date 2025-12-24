@@ -182,11 +182,16 @@ func (s *LineageService) BuildLineage(ctx context.Context, filters LineageFilter
 					ParentID:  nodeID,
 					RiskScore: calculateFindingRiskScore(finding.Severity),
 					Metadata: map[string]interface{}{
-						"pattern":        finding.PatternName,
-						"severity":       finding.Severity,
-						"matches_count":  len(finding.Matches),
-						"classification": classificationType,
-						"confidence":     confidence,
+						"pattern":              finding.PatternName,
+						"severity":             finding.Severity,
+						"matches_count":        len(finding.Matches),
+						"classification":       classificationType,
+						"confidence":           confidence,
+						"signals":              map[string]interface{}{"pattern_match": true},
+						"justification":        classifications[0].Justification,
+						"classification_state": getClassificationState(confidence),
+						"dpdpa_category":       classifications[0].DPDPACategory,
+						"requires_consent":     classifications[0].RequiresConsent,
 					},
 				})
 				nodeMap[findingNodeID] = true
@@ -279,4 +284,14 @@ func calculateFindingRiskScore(severity string) int {
 	default:
 		return 10
 	}
+}
+
+func getClassificationState(confidence float64) string {
+	if confidence >= 0.90 {
+		return "confirmed"
+	}
+	if confidence >= 0.70 {
+		return "high_confidence"
+	}
+	return "needs_review"
 }
