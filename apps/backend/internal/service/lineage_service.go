@@ -22,12 +22,13 @@ func NewLineageService(repo *persistence.PostgresRepository) *LineageService {
 
 // Node represents a graph node
 type Node struct {
-	ID        string                 `json:"id"`
-	Label     string                 `json:"label"`
-	Type      string                 `json:"type"`
-	ParentID  string                 `json:"parent_id,omitempty"`
-	RiskScore int                    `json:"risk_score"`
-	Metadata  map[string]interface{} `json:"metadata"`
+	ID           string                 `json:"id"`
+	Label        string                 `json:"label"`
+	Type         string                 `json:"type"`
+	ParentID     string                 `json:"parent_id,omitempty"`
+	RiskScore    int                    `json:"risk_score"`
+	Metadata     map[string]interface{} `json:"metadata"`
+	ReviewStatus string                 `json:"review_status,omitempty"`
 }
 
 // Edge represents a graph edge
@@ -175,6 +176,12 @@ func (s *LineageService) BuildLineage(ctx context.Context, filters LineageFilter
 					continue
 				}
 
+				// Get review status
+				reviewStatus := "pending"
+				if rs, err := s.repo.GetReviewStateByFindingID(ctx, finding.ID); err == nil && rs != nil {
+					reviewStatus = rs.Status
+				}
+
 				nodes = append(nodes, Node{
 					ID:    findingNodeID,
 					Label: finding.PatternName,
@@ -193,6 +200,7 @@ func (s *LineageService) BuildLineage(ctx context.Context, filters LineageFilter
 						"dpdpa_category":       classifications[0].DPDPACategory,
 						"requires_consent":     classifications[0].RequiresConsent,
 					},
+					ReviewStatus: reviewStatus,
 				})
 				nodeMap[findingNodeID] = true
 

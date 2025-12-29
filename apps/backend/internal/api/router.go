@@ -16,6 +16,7 @@ type Router struct {
 	findingsHandler       *FindingsHandler
 	assetHandler          *AssetHandler
 	graphHandler          *GraphHandler
+	datasetHandler        *DatasetHandler
 }
 
 // NewRouter creates a new router with all handlers
@@ -27,6 +28,7 @@ func NewRouter(
 	findingsService *service.FindingsService,
 	assetService *service.AssetService,
 	semanticLineageService *service.SemanticLineageService,
+	datasetService *service.DatasetService,
 ) *Router {
 	return &Router{
 		ingestionHandler:      NewIngestionHandler(ingestionService),
@@ -35,6 +37,7 @@ func NewRouter(
 		findingsHandler:       NewFindingsHandler(findingsService),
 		assetHandler:          NewAssetHandler(assetService),
 		graphHandler:          NewGraphHandler(semanticLineageService),
+		datasetHandler:        NewDatasetHandler(datasetService),
 	}
 }
 
@@ -84,6 +87,7 @@ func (r *Router) SetupRoutes(router *gin.Engine, allowedOrigins string) {
 		classification := v1.Group("/classification")
 		{
 			classification.GET("/summary", r.classificationHandler.GetClassificationSummary)
+			classification.POST("/predict", r.classificationHandler.Predict)
 		}
 
 		// Findings
@@ -94,5 +98,8 @@ func (r *Router) SetupRoutes(router *gin.Engine, allowedOrigins string) {
 		// Assets
 		v1.GET("/assets", r.assetHandler.ListAssets)
 		v1.GET("/assets/:id", r.assetHandler.GetAsset)
+
+		// Dataset (Golden)
+		v1.GET("/dataset/golden", r.datasetHandler.GetGoldenDataset)
 	}
 }

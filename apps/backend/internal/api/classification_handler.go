@@ -36,3 +36,29 @@ func (h *ClassificationHandler) GetClassificationSummary(c *gin.Context) {
 		"data": summary,
 	})
 }
+
+type ClassificationRequest struct {
+	Text        string                 `json:"text" binding:"required"`
+	PatternName string                 `json:"pattern_name" binding:"required"`
+	FilePath    string                 `json:"file_path"`
+	FileData    map[string]interface{} `json:"file_data"`
+}
+
+// Predict handles POST /api/v1/classification/predict
+// It returns the classification result for a given text without persisting it.
+func (h *ClassificationHandler) Predict(c *gin.Context) {
+	var req ClassificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Use match as text for simplicity in playground testing
+	// In real scanner, match is the specific substring.
+	// For regression, we pass sample text as match to test full logic.
+	result := h.service.Classify(req.PatternName, req.FilePath, req.Text, req.FileData)
+
+	c.JSON(http.StatusOK, gin.H{
+		"classification": result,
+	})
+}

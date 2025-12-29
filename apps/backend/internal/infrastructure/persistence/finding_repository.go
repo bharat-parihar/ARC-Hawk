@@ -218,3 +218,45 @@ func (r *PostgresRepository) CreateFeedback(ctx context.Context, feedback *entit
 		feedback.OriginalClassification, feedback.ProposedClassification, feedback.Comments,
 	).Scan(&feedback.CreatedAt, &feedback.Processed)
 }
+
+func (r *PostgresRepository) GetFeedbackForDataset(ctx context.Context) ([]entity.FeedbackWithFinding, error) {
+	query := `
+		SELECT 
+			fb.id, fb.finding_id, fb.user_id, fb.feedback_type, fb.original_classification, fb.proposed_classification, fb.comments, fb.created_at, fb.processed,
+			f.id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, f.severity, f.severity_description, f.confidence_score, f.context, f.created_at, f.updated_at
+		FROM finding_feedback fb
+		JOIN findings f ON fb.finding_id = f.id
+		WHERE fb.feedback_type IN ('CONFIRMED', 'FALSE_POSITIVE')
+		ORDER BY fb.created_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query feedback: %w", err)
+	}
+	defer rows.Close()
+
+	var results []entity.FeedbackWithFinding
+
+	for rows.Next() {
+		var item entity.FeedbackWithFinding
+		var contextJSON []byte
+
+		err := rows.Scan(
+			&item.Feedback.ID, &item.Feedback.FindingID, &item.Feedback.UserID, &item.Feedback.FeedbackType, &item.Feedback.OriginalClassification, &item.Feedback.ProposedClassification, &item.Feedback.Comments, &item.Feedback.CreatedAt, &item.Feedback.Processed,
+			&item.Finding.ID, &item.Finding.ScanRunID, &item.Finding.AssetID, &item.Finding.PatternID, &item.Finding.PatternName, pq.Array(&item.Finding.Matches), &item.Finding.SampleText, &item.Finding.Severity, &item.Finding.SeverityDescription, &item.Finding.ConfidenceScore, &contextJSON, &item.Finding.CreatedAt, &item.Finding.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan feedback row: %w", err)
+		}
+
+		if len(contextJSON) > 0 {
+			if err := json.Unmarshal(contextJSON, &item.Finding.Context); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal context: %w", err)
+			}
+		}
+
+		results = append(results, item)
+	}
+
+	return results, nil
+}

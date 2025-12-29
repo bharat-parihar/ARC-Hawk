@@ -132,6 +132,8 @@ export interface ClassificationSummary {
     by_type: Record<string, TypeBreakdown>;
     high_confidence_count: number;
     requiring_consent_count: number;
+    verified_count: number;
+    false_positive_count: number;
     dpdpa_categories: Record<string, number>;
 }
 

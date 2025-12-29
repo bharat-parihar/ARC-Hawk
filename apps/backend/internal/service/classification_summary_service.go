@@ -19,11 +19,13 @@ func NewClassificationSummaryService(repo *persistence.PostgresRepository) *Clas
 
 // ClassificationSummary represents aggregated classification data
 type ClassificationSummary struct {
-	Total            int                      `json:"total"`
-	ByType           map[string]TypeBreakdown `json:"by_type"`
-	HighConfidence   int                      `json:"high_confidence_count"`
-	RequiringConsent int                      `json:"requiring_consent_count"`
-	DPDPACategories  map[string]int           `json:"dpdpa_categories"`
+	Total              int                      `json:"total"`
+	ByType             map[string]TypeBreakdown `json:"by_type"`
+	HighConfidence     int                      `json:"high_confidence_count"`
+	RequiringConsent   int                      `json:"requiring_consent_count"`
+	VerifiedCount      int                      `json:"verified_count"`
+	FalsePositiveCount int                      `json:"false_positive_count"`
+	DPDPACategories    map[string]int           `json:"dpdpa_categories"`
 }
 
 // TypeBreakdown represents statistics for a classification type
@@ -81,11 +83,24 @@ func (s *ClassificationSummaryService) GetClassificationSummary(ctx context.Cont
 		}
 	}
 
+	// Parse optional counts (default to 0 if missing)
+	verifiedCount := 0
+	if val, ok := rawSummary["verified_count"].(int); ok {
+		verifiedCount = val
+	}
+
+	falsePositiveCount := 0
+	if val, ok := rawSummary["false_positive_count"].(int); ok {
+		falsePositiveCount = val
+	}
+
 	return &ClassificationSummary{
-		Total:            total,
-		ByType:           byType,
-		HighConfidence:   highConfidence,
-		RequiringConsent: requiringConsent,
-		DPDPACategories:  dpdpaCategories,
+		Total:              total,
+		ByType:             byType,
+		HighConfidence:     highConfidence,
+		RequiringConsent:   requiringConsent,
+		VerifiedCount:      verifiedCount,
+		FalsePositiveCount: falsePositiveCount,
+		DPDPACategories:    dpdpaCategories,
 	}, nil
 }

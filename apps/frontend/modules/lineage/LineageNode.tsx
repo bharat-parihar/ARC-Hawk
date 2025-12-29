@@ -13,7 +13,7 @@ interface LineageNodeProps {
 }
 
 export default function LineageNode({ data, id }: LineageNodeProps) {
-    const { label, type, risk_score, metadata, expanded, onExpand, childCount } = data;
+    const { label, type, risk_score, metadata, expanded, onExpand, childCount, review_status } = data;
     const [isHovered, setIsHovered] = React.useState(false);
 
     const nodeColors = getNodeColor(type, risk_score);
@@ -72,6 +72,7 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
                 transition: 'all 0.2s ease',
                 transform: isHovered ? 'scale(1.02)' : 'scale(1)',
                 cursor: 'pointer',
+                opacity: review_status === 'false_positive' ? 0.6 : 1,
             }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
@@ -116,17 +117,37 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
                 </div>
 
                 {/* Risk Indicator for high-risk nodes */}
-                {risk_score >= 70 && (
-                    <div
-                        style={{
-                            width: '10px',
-                            height: '10px',
-                            borderRadius: '50%',
-                            backgroundColor: risk_score >= 90 ? colors.state.risk : colors.state.warning,
-                            boxShadow: `0 0 8px ${risk_score >= 90 ? colors.state.risk : colors.state.warning}`,
-                        }}
-                    />
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {review_status === 'confirmed' && (
+                        <span title="Verified PII" style={{ fontSize: '14px' }}>✅</span>
+                    )}
+                    {review_status === 'false_positive' && (
+                        <span
+                            title="Marked False Positive"
+                            style={{
+                                fontSize: '10px',
+                                padding: '2px 4px',
+                                background: '#e5e7eb',
+                                borderRadius: '4px',
+                                color: '#6b7280',
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            FALSE POSITIVE
+                        </span>
+                    )}
+                    {(!review_status || review_status === 'pending') && risk_score >= 70 && (
+                        <div
+                            style={{
+                                width: '10px',
+                                height: '10px',
+                                borderRadius: '50%',
+                                backgroundColor: risk_score >= 90 ? colors.state.risk : colors.state.warning,
+                                boxShadow: `0 0 8px ${risk_score >= 90 ? colors.state.risk : colors.state.warning}`,
+                            }}
+                        />
+                    )}
+                </div>
             </div>
 
             {/* Body */}

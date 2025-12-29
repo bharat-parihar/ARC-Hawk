@@ -25,3 +25,9 @@ type FindingFeedback struct {
 	CreatedAt              time.Time `json:"created_at"`
 	Processed              bool      `json:"processed"`
 }
+
+// FeedbackWithFinding represents feedback joined with finding details for dataset generation
+type FeedbackWithFinding struct {
+	Feedback FindingFeedback
+	Finding  Finding
+}

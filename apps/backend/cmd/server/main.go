@@ -99,6 +99,7 @@ func main() {
 	lineageService := service.NewLineageService(repo)
 	findingsService := service.NewFindingsService(repo)
 	assetService := service.NewAssetService(repo)
+	datasetService := service.NewDatasetService(repo)
 
 	// Initialize router
 	r := gin.Default()
@@ -110,6 +111,7 @@ func main() {
 		findingsService,
 		assetService,
 		semanticLineageService,
+		datasetService,
 	)
 
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")

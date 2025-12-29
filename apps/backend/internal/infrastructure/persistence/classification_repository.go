@@ -123,5 +123,21 @@ func (r *PostgresRepository) GetClassificationSummary(ctx context.Context) (map[
 	}
 	summary["total"] = total
 
+	// Get verified/confirmed count from review_states
+	var verifiedCount int
+	err = r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM review_states WHERE status = 'confirmed'").Scan(&verifiedCount)
+	if err != nil {
+		return nil, err
+	}
+	summary["verified_count"] = verifiedCount
+
+	// Get false positive count
+	var falsePositiveCount int
+	err = r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM review_states WHERE status = 'false_positive'").Scan(&falsePositiveCount)
+	if err != nil {
+		return nil, err
+	}
+	summary["false_positive_count"] = falsePositiveCount
+
 	return summary, rows.Err()
 }

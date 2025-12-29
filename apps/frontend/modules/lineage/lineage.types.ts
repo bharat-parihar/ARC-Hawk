@@ -15,6 +15,7 @@ export interface BaseNode {
     risk_score: number;
     metadata: Record<string, any>;
     parent_id?: string;
+    review_status?: 'pending' | 'confirmed' | 'false_positive';
 }
 
 export interface NodeData extends BaseNode {
