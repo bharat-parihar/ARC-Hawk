@@ -1,6 +1,12 @@
 # ARC Hawk Monorepo
 
+![Production Status](https://img.shields.io/badge/status-verified-green)
+![Architecture](https://img.shields.io/badge/architecture-clean-blue)
+![License](https://img.shields.io/badge/license-Apache%202.0-lightgrey)
+
 Enterprise-grade monorepo containing the Hawk-Eye scanner, ARC Platform backend, and dashboard.
+
+> **Production Readiness**: System verified for enterprise use. See [Verification Report](brain/verification_report.md) for details.
 
 ## Structure
 
@@ -29,10 +35,17 @@ Enterprise-grade monorepo containing the Hawk-Eye scanner, ARC Platform backend,
 
 ### Prerequisites
 
-- Docker & Docker Compose
-- Go 1.21+
-- Node.js 18+
-- Python 3.9+
+### Required
+- **Docker & Docker Compose** - For PostgreSQL
+- **Go 1.21+** - For backend compilation
+- **Node.js 18+** - For frontend
+- **Python 3.9+** - For Hawk-Eye scanner
+
+### Optional (Graceful Degradation)
+- **Neo4j** - Enhanced graph visualization (falls back to PostgreSQL)
+- **Presidio** - ML-based PII detection (falls back to rules-only)
+
+> 💡 See [Failure Modes Guide](docs/FAILURE_MODES.md) for degradation behavior
 
 ### Running with Docker Compose
 

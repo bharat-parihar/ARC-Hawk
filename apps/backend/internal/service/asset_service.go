@@ -34,3 +34,8 @@ func (s *AssetService) UpdateAsset(ctx context.Context, asset *entity.Asset) err
 	// For V2 MVP, we focus on Get.
 	return nil
 }
+
+// ListAssets returns a list of assets
+func (s *AssetService) ListAssets(ctx context.Context, limit, offset int) ([]*entity.Asset, error) {
+	return s.repo.ListAssets(ctx, limit, offset)
+}

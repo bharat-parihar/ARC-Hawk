@@ -169,6 +169,10 @@ go_server/server.log
 logs/
 push_to_github.sh
 
+# Backend compiled binaries and logs
+apps/backend/server
+apps/backend/*.log
+
 # Scan results
 output.csv
 output.json

@@ -20,6 +20,7 @@ setup(
     include_package_data=True,
     packages=find_packages(exclude=['ez_setup', 'examples', 'tests', 'tests.*', 'release']),
     zip_safe=False,
+    python_requires='>=3.9, <4.0',
     entry_points={
         'console_scripts': [
             'hawk_scanner=hawk_scanner.main:main',
@@ -35,7 +36,10 @@ setup(
         'Intended Audience :: Developers',
         'Topic :: Software Development :: Build Tools',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
     ],
     keywords='pii secrets sensitive-data cybersecurity scanner',
 )

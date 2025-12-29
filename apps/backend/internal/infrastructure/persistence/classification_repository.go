@@ -1,0 +1,127 @@
+package persistence
+
+import (
+	"context"
+
+	"encoding/json"
+	"fmt"
+
+	"github.com/arc-platform/backend/internal/domain/entity"
+	"github.com/google/uuid"
+)
+
+// ============================================================================
+// ClassificationRepository Implementation
+// ============================================================================
+
+func (r *PostgresRepository) CreateClassification(ctx context.Context, classification *entity.Classification) error {
+	signalBreakdownJSON, err := json.Marshal(classification.SignalBreakdown)
+	if err != nil {
+		return fmt.Errorf("failed to marshal signal breakdown: %w", err)
+	}
+
+	query := `
+		INSERT INTO classifications (id, finding_id, classification_type, sub_category, 
+			confidence_score, justification, dpdpa_category, requires_consent, retention_period,
+			signal_breakdown, engine_version, rule_score, presidio_score, context_score, entropy_score)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		RETURNING created_at, updated_at`
+
+	return r.db.QueryRowContext(ctx, query,
+		classification.ID, classification.FindingID, classification.ClassificationType,
+		classification.SubCategory, classification.ConfidenceScore, classification.Justification,
+		classification.DPDPACategory, classification.RequiresConsent, classification.RetentionPeriod,
+		signalBreakdownJSON, classification.EngineVersion,
+		classification.RuleScore, classification.PresidioScore,
+		classification.ContextScore, classification.EntropyScore,
+	).Scan(&classification.CreatedAt, &classification.UpdatedAt)
+}
+
+func (r *PostgresRepository) GetClassificationsByFindingID(ctx context.Context, findingID uuid.UUID) ([]*entity.Classification, error) {
+	query := `
+		SELECT id, finding_id, classification_type, sub_category, confidence_score, 
+			justification, dpdpa_category, requires_consent, retention_period, 
+			signal_breakdown, engine_version, rule_score, presidio_score, context_score, entropy_score,
+			created_at, updated_at
+		FROM classifications 
+		WHERE finding_id = $1`
+
+	rows, err := r.db.QueryContext(ctx, query, findingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var classifications []*entity.Classification
+	for rows.Next() {
+		c := &entity.Classification{}
+		var signalBreakdownJSON []byte
+
+		err := rows.Scan(
+			&c.ID, &c.FindingID, &c.ClassificationType, &c.SubCategory,
+			&c.ConfidenceScore, &c.Justification, &c.DPDPACategory,
+			&c.RequiresConsent, &c.RetentionPeriod,
+			&signalBreakdownJSON, &c.EngineVersion, &c.RuleScore, &c.PresidioScore, &c.ContextScore, &c.EntropyScore,
+			&c.CreatedAt, &c.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(signalBreakdownJSON) > 0 {
+			if err := json.Unmarshal(signalBreakdownJSON, &c.SignalBreakdown); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal signal breakdown: %w", err)
+			}
+		}
+
+		classifications = append(classifications, c)
+	}
+
+	return classifications, rows.Err()
+}
+
+func (r *PostgresRepository) GetClassificationSummary(ctx context.Context) (map[string]interface{}, error) {
+	query := `
+		SELECT 
+			classification_type, 
+			COUNT(*) as count,
+			AVG(confidence_score) as avg_confidence
+		FROM classifications
+		GROUP BY classification_type`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	summary := make(map[string]interface{})
+	typeBreakdown := make(map[string]interface{})
+
+	for rows.Next() {
+		var classificationType string
+		var count int
+		var avgConfidence float64
+
+		if err := rows.Scan(&classificationType, &count, &avgConfidence); err != nil {
+			return nil, err
+		}
+
+		typeBreakdown[classificationType] = map[string]interface{}{
+			"count":          count,
+			"avg_confidence": avgConfidence,
+		}
+	}
+
+	summary["by_type"] = typeBreakdown
+
+	// Get total count
+	var total int
+	err = r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM classifications").Scan(&total)
+	if err != nil {
+		return nil, err
+	}
+	summary["total"] = total
+
+	return summary, rows.Err()
+}

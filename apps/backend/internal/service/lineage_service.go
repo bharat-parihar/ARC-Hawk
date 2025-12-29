@@ -176,10 +176,10 @@ func (s *LineageService) BuildLineage(ctx context.Context, filters LineageFilter
 				}
 
 				nodes = append(nodes, Node{
-					ID:        findingNodeID,
-					Label:     finding.PatternName,
-					Type:      "finding",
-					ParentID:  nodeID,
+					ID:    findingNodeID,
+					Label: finding.PatternName,
+					Type:  "finding",
+					// ParentID:  nodeID, // Un-nest to show visible edges
 					RiskScore: calculateFindingRiskScore(finding.Severity),
 					Metadata: map[string]interface{}{
 						"pattern":              finding.PatternName,

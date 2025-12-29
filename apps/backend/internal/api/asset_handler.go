@@ -35,3 +35,14 @@ func (h *AssetHandler) GetAsset(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"data": asset})
 }
+
+// ListAssets handles GET /api/v1/assets
+func (h *AssetHandler) ListAssets(c *gin.Context) {
+	assets, err := h.service.ListAssets(c.Request.Context(), 100, 0)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list assets"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": assets})
+}

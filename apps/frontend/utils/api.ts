@@ -54,6 +54,15 @@ export const api = {
         return response.data.data;
     },
 
+    getSemanticGraph: async (filters?: {
+        system_id?: string;
+        risk_level?: string;
+        category?: string;
+    }): Promise<{ nodes: any[]; edges: any[] }> => {
+        const response = await apiClient.get('/graph/semantic', { params: filters });
+        return response.data.data;
+    },
+
     healthCheck: async (): Promise<{ status: string; service: string }> => {
         const response = await axios.get(`${API_BASE_URL.replace('/api/v1', '')}/health`);
         return response.data;

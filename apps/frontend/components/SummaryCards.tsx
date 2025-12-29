@@ -1,4 +1,6 @@
 import React from 'react';
+import { colors } from '@/design-system/colors';
+import { theme } from '@/design-system/themes';
 
 interface SummaryCardsProps {
     totalFindings?: number;
@@ -14,35 +16,104 @@ export default function SummaryCards({
     criticalFindings = 0,
 }: SummaryCardsProps) {
     return (
-        <div className="summary-cards">
-            <div className="card">
-                <div className="card-label">Total Findings</div>
-                <div className="card-value">{totalFindings.toLocaleString()}</div>
-                <div className="card-subtitle">Across all assets</div>
-            </div>
+        <div
+            style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '24px',
+                marginBottom: '32px',
+            }}
+        >
+            <Card
+                label="Total Findings"
+                value={totalFindings}
+                subtitle="Across all assets"
+                color={colors.nodeColors.asset}
+            />
 
-            <div className="card">
-                <div className="card-label">Sensitive PII</div>
-                <div className="card-value" style={{ color: 'var(--risk-high)' }}>
-                    {sensitivePIICount.toLocaleString()}
-                </div>
-                <div className="card-subtitle">Requires consent & protection</div>
-            </div>
+            <Card
+                label="Sensitive PII"
+                value={sensitivePIICount}
+                subtitle="Requires consent & protection"
+                color={colors.state.risk}
+            />
 
-            <div className="card">
-                <div className="card-label">High-Risk Assets</div>
-                <div className="card-value" style={{ color: 'var(--risk-medium)' }}>
-                    {highRiskAssets.toLocaleString()}
-                </div>
-                <div className="card-subtitle">Risk score ≥ 70</div>
-            </div>
+            <Card
+                label="High-Risk Assets"
+                value={highRiskAssets}
+                subtitle="Risk score ≥ 70"
+                color={colors.state.warning}
+            />
 
-            <div className="card">
-                <div className="card-label">Critical Findings</div>
-                <div className="card-value" style={{ color: 'var(--risk-critical)' }}>
-                    {criticalFindings.toLocaleString()}
-                </div>
-                <div className="card-subtitle">Immediate attention required</div>
+            <Card
+                label="Critical Findings"
+                value={criticalFindings}
+                subtitle="Immediate attention required"
+                color={colors.state.risk}
+            />
+        </div>
+    );
+}
+
+function Card({
+    label,
+    value,
+    subtitle,
+    color,
+}: {
+    label: string;
+    value: number;
+    subtitle: string;
+    color: string;
+}) {
+    const [isHovered, setIsHovered] = React.useState(false);
+
+    return (
+        <div
+            style={{
+                background: colors.background.surface,
+                border: `1px solid ${colors.border.default}`,
+                borderRadius: theme.borderRadius.xl,
+                padding: '24px',
+                boxShadow: isHovered ? theme.shadows.lg : theme.shadows.sm,
+                transition: 'all 0.2s ease',
+                transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
+                cursor: 'default',
+            }}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
+            <div
+                style={{
+                    fontSize: theme.fontSize.sm,
+                    color: colors.text.secondary,
+                    marginBottom: '12px',
+                    fontWeight: theme.fontWeight.bold,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                }}
+            >
+                {label}
+            </div>
+            <div
+                style={{
+                    fontSize: '40px',
+                    fontWeight: theme.fontWeight.extrabold,
+                    color: color,
+                    lineHeight: 1.2,
+                    marginBottom: '8px',
+                }}
+            >
+                {value.toLocaleString()}
+            </div>
+            <div
+                style={{
+                    fontSize: theme.fontSize.sm,
+                    color: colors.text.muted,
+                    fontWeight: theme.fontWeight.medium,
+                }}
+            >
+                {subtitle}
             </div>
         </div>
     );

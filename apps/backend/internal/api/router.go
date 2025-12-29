@@ -15,6 +15,7 @@ type Router struct {
 	classificationHandler *ClassificationHandler
 	findingsHandler       *FindingsHandler
 	assetHandler          *AssetHandler
+	graphHandler          *GraphHandler
 }
 
 // NewRouter creates a new router with all handlers
@@ -22,15 +23,18 @@ func NewRouter(
 	ingestionService *service.IngestionService,
 	lineageService *service.LineageService,
 	classificationService *service.ClassificationService,
+	classificationSummaryService *service.ClassificationSummaryService,
 	findingsService *service.FindingsService,
 	assetService *service.AssetService,
+	semanticLineageService *service.SemanticLineageService,
 ) *Router {
 	return &Router{
 		ingestionHandler:      NewIngestionHandler(ingestionService),
 		lineageHandler:        NewLineageHandler(lineageService),
-		classificationHandler: NewClassificationHandler(classificationService),
+		classificationHandler: NewClassificationHandler(classificationService, classificationSummaryService),
 		findingsHandler:       NewFindingsHandler(findingsService),
 		assetHandler:          NewAssetHandler(assetService),
+		graphHandler:          NewGraphHandler(semanticLineageService),
 	}
 }
 
@@ -70,6 +74,12 @@ func (r *Router) SetupRoutes(router *gin.Engine, allowedOrigins string) {
 		// Lineage
 		v1.GET("/lineage", r.lineageHandler.GetLineage)
 
+		// Semantic Graph (NEW - Aggregated Neo4j Graph)
+		graph := v1.Group("/graph")
+		{
+			graph.GET("/semantic", r.graphHandler.GetSemanticGraph)
+		}
+
 		// Classification
 		classification := v1.Group("/classification")
 		{
@@ -79,8 +89,10 @@ func (r *Router) SetupRoutes(router *gin.Engine, allowedOrigins string) {
 		// Findings
 		// Findings
 		v1.GET("/findings", r.findingsHandler.GetFindings)
+		v1.POST("/findings/:id/feedback", r.findingsHandler.SubmitFeedback)
 
 		// Assets
+		v1.GET("/assets", r.assetHandler.ListAssets)
 		v1.GET("/assets/:id", r.assetHandler.GetAsset)
 	}
 }

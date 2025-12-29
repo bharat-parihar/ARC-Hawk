@@ -10,21 +10,26 @@ import (
 	"time"
 
 	"github.com/arc-platform/backend/internal/domain/entity"
+	"github.com/arc-platform/backend/internal/domain/repository"
 	"github.com/arc-platform/backend/internal/infrastructure/persistence"
 	"github.com/google/uuid"
 )
 
 // IngestionService handles scan ingestion and normalization
 type IngestionService struct {
-	repo       *persistence.PostgresRepository
-	classifier *ClassificationService
+	repo            *persistence.PostgresRepository
+	classifier      *ClassificationService
+	enrichment      *EnrichmentService
+	semanticLineage *SemanticLineageService
 }
 
 // NewIngestionService creates a new ingestion service
-func NewIngestionService(repo *persistence.PostgresRepository, classifier *ClassificationService) *IngestionService {
+func NewIngestionService(repo *persistence.PostgresRepository, classifier *ClassificationService, enrichment *EnrichmentService, semanticLineage *SemanticLineageService) *IngestionService {
 	return &IngestionService{
-		repo:       repo,
-		classifier: classifier,
+		repo:            repo,
+		classifier:      classifier,
+		enrichment:      enrichment,
+		semanticLineage: semanticLineage,
 	}
 }
 
@@ -153,18 +158,62 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			return nil, fmt.Errorf("failed to get/create pattern: %w", err)
 		}
 
-		// Classify finding using V2 Engine
+		// ENRICHMENT LAYER - Add contextual intelligence
+		// Extract column name if this is a database finding
+		columnName := ""
+		if colVal, ok := hawkeyeFinding.FileData["column_name"]; ok {
+			if colStr, ok := colVal.(string); ok {
+				columnName = colStr
+			}
+		}
+
 		matchSample := ""
 		if len(hawkeyeFinding.Matches) > 0 {
 			matchSample = hawkeyeFinding.Matches[0]
 		}
 
+		// Perform enrichment
+		enrichmentSignals := s.enrichment.Enrich(ctx, EnrichmentContext{
+			FilePath:    hawkeyeFinding.FilePath,
+			MatchValue:  matchSample,
+			PatternName: hawkeyeFinding.PatternName,
+			AssetType:   "file",
+			ColumnName:  columnName,
+		})
+
+		// Calculate enrichment score (this becomes the Context Score in multi-signal)
+		enrichmentScore := s.enrichment.GetEnrichmentScore(enrichmentSignals)
+
+		// Classify finding using multi-signal engine
 		classificationResult := s.classifier.Classify(
 			hawkeyeFinding.PatternName,
 			hawkeyeFinding.FilePath,
 			matchSample,
 			hawkeyeFinding.FileData,
 		)
+
+		// FILTER: Do NOT skip Non-PII. Persist everything for audit.
+		// if classificationResult.ClassificationType == "Non-PII" {
+		// 	continue
+		// }
+
+		// Sanitize inputs for Postgres (remove null bytes)
+		sanitizedMatches := make([]string, len(hawkeyeFinding.Matches))
+		for i, m := range hawkeyeFinding.Matches {
+			sanitizedMatches[i] = strings.ReplaceAll(m, "\u0000", "")
+		}
+		sanitizedSample := strings.ReplaceAll(hawkeyeFinding.SampleText, "\u0000", "")
+
+		// Convert enrichment signals to map for storage
+		enrichmentMap := map[string]interface{}{
+			"asset_semantics":   enrichmentSignals.AssetSemantics,
+			"environment":       enrichmentSignals.Environment,
+			"entropy":           enrichmentSignals.Entropy,
+			"charset_diversity": enrichmentSignals.CharsetDiversity,
+			"token_shape":       enrichmentSignals.TokenShape,
+			"value_hash":        enrichmentSignals.ValueHash,
+			"historical_count":  enrichmentSignals.HistoricalCount,
+		}
 
 		// Create finding
 		finding := &entity.Finding{
@@ -173,12 +222,15 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			AssetID:             assetID,
 			PatternID:           &patternID,
 			PatternName:         hawkeyeFinding.PatternName,
-			Matches:             hawkeyeFinding.Matches,
-			SampleText:          hawkeyeFinding.SampleText,
+			Matches:             sanitizedMatches,
+			SampleText:          sanitizedSample,
 			Severity:            hawkeyeFinding.Severity,
 			SeverityDescription: hawkeyeFinding.SeverityDescription,
 			ConfidenceScore:     &classificationResult.ConfidenceScore,
 			Context:             classificationResult.Signals,
+			EnrichmentSignals:   enrichmentMap,
+			EnrichmentScore:     &enrichmentScore,
+			EnrichmentFailed:    enrichmentSignals.EnrichmentFailed,
 		}
 
 		if err := s.repo.CreateFinding(ctx, finding); err != nil {
@@ -216,13 +268,9 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 	// Update asset total findings and create relationships
 	for stableID, assetID := range assetMap {
 		// Count findings for this asset
-		count, err := s.repo.CountFindings(ctx, struct {
-			ScanRunID   *uuid.UUID
-			AssetID     *uuid.UUID
-			Severity    string
-			PatternName string
-			DataSource  string
-		}{AssetID: &assetID})
+		count, err := s.repo.CountFindings(ctx, repository.FindingFilters{
+			AssetID: &assetID,
+		})
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to count findings: %w", err)
@@ -232,15 +280,19 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 		asset, _ := s.repo.GetAssetByStableID(ctx, stableID)
 		if asset != nil {
 			asset.TotalFindings = count
-			// Risk score based on findings count and severity
-			if count > 10 {
-				asset.RiskScore = 90
-			} else if count > 5 {
-				asset.RiskScore = 70
-			} else if count > 0 {
-				asset.RiskScore = 50
+			// Recalculate robust risk score based on all findings
+			if err := s.recalculateAssetRisk(ctx, assetID); err != nil {
+				// Log error but verify other assets
+				fmt.Printf("Error recalculating risk for asset %s: %v\n", stableID, err)
 			}
-			s.repo.UpdateAssetRiskScore(ctx, asset.ID, asset.RiskScore)
+
+			// Sync to Neo4j if semantic lineage is enabled
+			if s.semanticLineage != nil {
+				if err := s.semanticLineage.SyncAssetToNeo4j(ctx, assetID); err != nil {
+					// Log but don't fail ingestion (graceful degradation)
+					fmt.Printf("WARNING: Failed to sync asset %s to Neo4j: %v\n", assetID, err)
+				}
+			}
 		}
 	}
 
@@ -258,6 +310,97 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 		AssetsCreated: assetsCreated,
 		PatternsFound: len(patternMap),
 	}, nil
+}
+
+// recalculateAssetRisk derives the risk score from findings severity and count
+func (s *IngestionService) recalculateAssetRisk(ctx context.Context, assetID uuid.UUID) error {
+	// 1. Get total findings count
+	// We could use CountFindings, but we need max severity too.
+	// Let's rely on the repository to give us stats or query findings.
+
+	// For now, simpler: Get ALL findings for this asset (lightweight if paginated/limited, but potentially heavy)
+	// BETTER: Add a method to repo: GetAssetRiskData(assetID) -> (count, maxSeverity)
+	// Since I can't easily modify the repo interface without touching multiple files,
+	// I will use ListFindings logic with a limit, or just count.
+
+	// Actually, I can use CountFindings for count.
+	count, err := s.repo.CountFindings(ctx, repository.FindingFilters{
+		AssetID: &assetID,
+	})
+	if err != nil {
+		return err
+	}
+
+	// 2. Determine Max Severity
+	// We verify if there are ANY 'Critical' or 'High' findings.
+	hasCritical, err := s.hasFindingWithSeverity(ctx, assetID, "Critical") // "Highest" mapped to Critical in DB?
+	// Wait, internal severity is strings: "Highest", "High", "Medium", "Low".
+	// The scanner sends "Highest" or "High".
+	// Let's check "Highest" (Critical)
+	if err != nil {
+		return err
+	}
+
+	hasHigh, err := s.hasFindingWithSeverity(ctx, assetID, "High")
+	if err != nil {
+		return err
+	}
+
+	// 3. Calculate Base Score
+	baseScore := 10
+	if hasCritical {
+		baseScore = 95
+	} else if hasHigh {
+		if count > 3 {
+			baseScore = 85 // High volume of High severity
+		} else {
+			baseScore = 75
+		}
+	} else if count > 0 {
+		// Medium/Low
+		if count > 10 {
+			baseScore = 60
+		} else {
+			baseScore = 40
+		}
+	}
+
+	// 4. Update Asset
+	return s.repo.UpdateAssetStats(ctx, assetID, baseScore, count)
+}
+
+func (s *IngestionService) hasFindingWithSeverity(ctx context.Context, assetID uuid.UUID, severity string) (bool, error) {
+	// Quick check using CountFindings filtering
+	// Note: Scanner sends "Highest" for Critical. Repo stores what scanner sends (string).
+	// My previous fix used "Highest" -> Critical mapping in calculateRiskScore but persisted the raw string.
+	// Let's check strict_rules.yml or system.py.
+	// verification_output.json showed: "severity": "Highest"
+
+	targetSev := severity
+	if severity == "Critical" {
+		targetSev = "Highest" // Map back to scanner term if needed, or check both
+	}
+
+	count, err := s.repo.CountFindings(ctx, repository.FindingFilters{
+		AssetID:  &assetID,
+		Severity: targetSev,
+	})
+
+	if count > 0 {
+		return true, nil
+	}
+
+	// Double check alternative naming
+	if severity == "Critical" && targetSev == "Highest" {
+		// Also check "Critical" just in case
+		c2, err := s.repo.CountFindings(ctx, repository.FindingFilters{
+			AssetID:  &assetID,
+			Severity: "Critical",
+		})
+		return c2 > 0, err
+	}
+
+	return false, err
 }
 
 // getOrCreatePattern gets existing pattern or creates new one
@@ -328,6 +471,16 @@ func calculateRiskScore(severity string) int {
 	default:
 		return 10
 	}
+}
+
+// contains checks if string contains any of the substrings
+func contains(str string, substrings []string) bool {
+	for _, substr := range substrings {
+		if strings.Contains(str, substr) {
+			return true
+		}
+	}
+	return false
 }
 
 // categorizePattern determines pattern category

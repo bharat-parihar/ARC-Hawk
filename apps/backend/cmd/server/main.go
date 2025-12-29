@@ -50,8 +50,52 @@ func main() {
 	}
 
 	// Initialize services
+	enrichmentService := service.NewEnrichmentService(repo)
 	classificationService := service.NewClassificationService(repo)
-	ingestionService := service.NewIngestionService(repo, classificationService)
+	classificationSummaryService := service.NewClassificationSummaryService(repo)
+
+	// Optional: Presidio ML integration
+	presidioEnabled := os.Getenv("PRESIDIO_ENABLED")
+	presidioURL := os.Getenv("PRESIDIO_URL")
+	if presidioEnabled == "true" && presidioURL != "" {
+		log.Printf("Presidio ML enabled at %s", presidioURL)
+	} else {
+		log.Println("Presidio ML disabled (rules-only mode)")
+	}
+
+	// Neo4j configuration (optional - needed for semantic graph)
+	neo4jEnabled := os.Getenv("NEO4J_ENABLED")
+	neo4jURI := os.Getenv("NEO4J_URI")
+	if neo4jURI == "" {
+		neo4jURI = "bolt://localhost:7687"
+	}
+	neo4jUsername := os.Getenv("NEO4J_USERNAME")
+	if neo4jUsername == "" {
+		neo4jUsername = "neo4j"
+	}
+	neo4jPassword := os.Getenv("NEO4J_PASSWORD")
+	if neo4jPassword == "" {
+		neo4jPassword = "password123"
+	}
+
+	// Create semantic lineage service (required by ingestion)
+	var semanticLineageService *service.SemanticLineageService
+	if neo4jEnabled == "true" {
+		neo4jRepo, err := persistence.NewNeo4jRepository(neo4jURI, neo4jUsername, neo4jPassword)
+		if err != nil {
+			log.Printf("WARNING: Neo4j connection failed: %v (falling back to PostgreSQL)", err)
+			semanticLineageService = service.NewSemanticLineageService(nil, repo)
+		} else {
+			log.Println("✅ Neo4j semantic lineage enabled at", neo4jURI)
+			semanticLineageService = service.NewSemanticLineageService(neo4jRepo, repo)
+		}
+	} else {
+		log.Println("Neo4j disabled - using PostgreSQL-only lineage")
+		semanticLineageService = service.NewSemanticLineageService(nil, repo)
+	}
+
+	// Create remaining services
+	ingestionService := service.NewIngestionService(repo, classificationService, enrichmentService, semanticLineageService)
 	lineageService := service.NewLineageService(repo)
 	findingsService := service.NewFindingsService(repo)
 	assetService := service.NewAssetService(repo)
@@ -62,8 +106,10 @@ func main() {
 		ingestionService,
 		lineageService,
 		classificationService,
+		classificationSummaryService,
 		findingsService,
 		assetService,
+		semanticLineageService,
 	)
 
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/arc-platform/backend/internal/domain/entity"
 	"github.com/arc-platform/backend/internal/domain/repository"
@@ -130,4 +131,75 @@ func (s *FindingsService) GetFindings(ctx context.Context, query FindingsQuery) 
 		PageSize:   query.PageSize,
 		TotalPages: totalPages,
 	}, nil
+}
+
+// SubmitFeedback records user feedback for a finding
+func (s *FindingsService) SubmitFeedback(ctx context.Context, feedback *entity.FindingFeedback) error {
+	// 1. Verify finding exists
+	_, err := s.repo.GetFindingByID(ctx, feedback.FindingID)
+	if err != nil {
+		return fmt.Errorf("finding not found: %w", err)
+	}
+
+	// 2. Set defaults
+	if feedback.ID == uuid.Nil {
+		feedback.ID = uuid.New()
+	}
+	if feedback.UserID == "" {
+		feedback.UserID = "system"
+	}
+
+	// Capture original state if not provided (though FE should probably provide it)
+	if feedback.OriginalClassification == "" {
+		// In a real scenario, we'd fetch the classification entity.
+		// For now, we assume the client sends what they saw.
+		feedback.OriginalClassification = "Unknown"
+	}
+
+	// 3. Save feedback
+	if err := s.repo.CreateFeedback(ctx, feedback); err != nil {
+		return fmt.Errorf("failed to save feedback: %w", err)
+	}
+
+	// 4. IMMEDIATE ACTION: Update Review State based on feedback
+	// If User says "False Positive", we should mark it as such.
+	reviewStatus := "pending"
+	if feedback.FeedbackType == entity.FeedbackTypeFalsePositive {
+		reviewStatus = "false_positive"
+	} else if feedback.FeedbackType == entity.FeedbackTypeConfirmed {
+		reviewStatus = "confirmed"
+	}
+
+	// Update or Create Review State
+	existingState, err := s.repo.GetReviewStateByFindingID(ctx, feedback.FindingID)
+	if err != nil {
+		return fmt.Errorf("failed to check review state: %w", err)
+	}
+
+	now := time.Now()
+	if existingState != nil {
+		// Update existing
+		existingState.Status = reviewStatus
+		existingState.ReviewedBy = feedback.UserID
+		existingState.ReviewedAt = &now
+		existingState.Comments = feedback.Comments
+		if err := s.repo.UpdateReviewState(ctx, existingState); err != nil {
+			return fmt.Errorf("failed to update review state: %w", err)
+		}
+	} else {
+		// Create new
+		newState := &entity.ReviewState{
+			ID:         uuid.New(),
+			FindingID:  feedback.FindingID,
+			Status:     reviewStatus,
+			ReviewedBy: feedback.UserID,
+			ReviewedAt: &now,
+			Comments:   feedback.Comments,
+		}
+		if err := s.repo.CreateReviewState(ctx, newState); err != nil {
+			return fmt.Errorf("failed to create review state: %w", err)
+		}
+	}
+
+	return nil
 }

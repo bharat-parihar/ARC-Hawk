@@ -46,6 +46,22 @@ export interface Finding {
     updated_at: string;
 }
 
+// Multi-Signal Classification Types
+export interface SignalScore {
+    raw_score: number;
+    weighted_score: number;
+    weight: number;
+    confidence: number;
+    explanation: string;
+}
+
+export interface EnrichmentSignals {
+    environment: string;
+    asset_semantics: number;
+    entropy: number;
+    charset_diversity: number;
+}
+
 export interface Classification {
     id: string;
     finding_id: string;
@@ -56,6 +72,20 @@ export interface Classification {
     dpdpa_category?: string;
     requires_consent: boolean;
     retention_period?: string;
+
+    // Multi-Signal Fields
+    confidence_level?: string; // "Confirmed" | "High Confidence" | "Needs Review" | "Discard"
+    engine_version?: string;
+    presidio_score?: number;
+    rule_score?: number;
+    context_score?: number;
+    entropy_score?: number;
+    signal_breakdown?: {
+        rule_signal?: SignalScore;
+        presidio_signal?: SignalScore;
+        context_signal?: SignalScore;
+        entropy_signal?: SignalScore;
+    };
 }
 
 export interface FindingWithDetails extends Finding {
@@ -120,3 +150,16 @@ export interface IngestResult {
     assets_created: number;
     patterns_found: number;
 }
+
+// Semantic Graph Types (Neo4j)
+export interface SemanticGraphFilters {
+    system_id?: string;
+    risk_level?: string;
+    category?: string;
+}
+
+export interface SemanticGraph {
+    nodes: Node[];
+    edges: Edge[];
+}
+
