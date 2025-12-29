@@ -23,7 +23,7 @@ export default function AssetInventoryPage() {
             setLoading(true);
             // We fetch the semantic graph to get all nodes, then filter for assets
             const graphData = await lineageApi.getSemanticGraph({});
-            const assetNodes = graphData.nodes.filter(n => n.type === 'asset' || n.type === 'system');
+            const assetNodes = graphData.nodes.filter((n: any) => n.type === 'asset' || n.type === 'system');
             setAssets(assetNodes);
         } catch (error) {
             console.error('Failed to fetch assets:', error);

@@ -52,6 +52,8 @@ export interface LineageGraph {
     edges: BaseEdge[];
 }
 
+export type SemanticGraph = LineageGraph;
+
 // ============================================
 // FILTERS
 // ============================================

@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { FindingWithDetails, SignalScore } from '@/types';
+import { findingsApi } from '@/services/findings.api';
+
 
 interface FindingsTableProps {
     findings: FindingWithDetails[];
@@ -35,6 +37,23 @@ export default function FindingsTable({
         setSeverity(value);
         onFilterChange({ severity: value, search });
     };
+
+    const handleFeedback = async (finding: FindingWithDetails, type: 'FALSE_POSITIVE' | 'CONFIRMED') => {
+        try {
+            await findingsApi.submitFeedback(finding.id, {
+                feedback_type: type,
+                original_classification: finding.classifications[0]?.classification_type,
+            });
+
+            // Optimistic Update: Refresh page or ideally update local state
+            // For now, simpler to reload page to see effect
+            window.location.reload();
+        } catch (err) {
+            console.error(err);
+            alert('Failed to submit feedback');
+        }
+    };
+
 
     const toggleRowExpand = (findingId: string) => {
         setExpandedRows(prev => {
@@ -87,112 +106,135 @@ export default function FindingsTable({
         );
     };
 
-    const renderSignalProgressBar = (signal?: SignalScore, label?: string) => {
+    const renderSignalBadge = (signal?: SignalScore, label?: string) => {
         if (!signal) return null;
 
-        const percentage = signal.confidence * 100;
-        const weightedPercentage = signal.weighted_score * 100;
+        // Minimal visual indicator: Color code based on contribution
+        // High contribution (>30% of weight) = Primary Color
+        // Low contribution = Muted Color
+        const isContributionSignificant = signal.weighted_score > 0.1;
 
         return (
-            <div className="signal-row" style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>
-                        {label} ({(signal.weight * 100).toFixed(0)}%)
-                    </span>
-                    <span style={{ fontSize: 12, color: '#64748b' }}>
-                        Raw: {signal.raw_score.toFixed(2)} → Weighted: {signal.weighted_score.toFixed(2)}
-                    </span>
-                </div>
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '4px 0',
+                opacity: isContributionSignificant ? 1 : 0.6
+            }}>
                 <div style={{
-                    width: '100%',
-                    height: 8,
-                    backgroundColor: '#e2e8f0',
-                    borderRadius: 4,
-                    overflow: 'hidden'
-                }}>
-                    <div style={{
-                        width: `${percentage}%`,
-                        height: '100%',
-                        background: `linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)`,
-                        transition: 'width 0.3s ease'
-                    }} />
-                </div>
-                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                    {signal.explanation}
-                </div>
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    backgroundColor: isContributionSignificant ? '#3b82f6' : '#cbd5e1'
+                }} />
+                <span style={{ fontSize: 13, fontWeight: 500, color: '#334155' }}>
+                    {label}:
+                </span>
+                <span style={{ fontSize: 13, fontFamily: 'monospace', color: '#0f172a' }}>
+                    {signal.confidence.toFixed(2)}
+                </span>
+                <span style={{ fontSize: 12, color: '#64748b' }}>
+                    ({(signal.weight * 100).toFixed(0)}% wgt)
+                </span>
             </div>
         );
     };
 
     const renderSignalBreakdown = (finding: FindingWithDetails) => {
         const classification = finding.classifications[0];
-        if (!classification || !classification.signal_breakdown) {
-            return (
-                <div style={{ padding: 16, color: '#64748b', fontSize: 13 }}>
-                    No signal breakdown available for this finding
-                </div>
-            );
-        }
+        if (!classification || !classification.signal_breakdown) return null;
 
         const breakdown = classification.signal_breakdown;
         const finalScore = classification.confidence_score;
 
         return (
             <div style={{
-                padding: 20,
+                padding: '16px 24px',
                 backgroundColor: '#f8fafc',
                 borderTop: '1px solid #e2e8f0',
-                borderRadius: '0 0 8px 8px'
             }}>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, color: '#0f172a' }}>
-                    🔍 Multi-Signal Classification Analysis
-                </div>
+                <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-                    <div>
-                        {renderSignalProgressBar(breakdown.rule_signal, '📋 Rule-based Signal')}
-                        {renderSignalProgressBar(breakdown.presidio_signal, '🤖 Presidio ML Signal')}
+                    {/* Left: Signals List */}
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#94a3b8', fontWeight: 600, marginBottom: 8, letterSpacing: '0.05em' }}>
+                            Signal Analysis
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '4px 24px' }}>
+                            {renderSignalBadge(breakdown.rule_signal, 'Rules')}
+                            {renderSignalBadge(breakdown.context_signal, 'Context')}
+                            {renderSignalBadge(breakdown.presidio_signal, 'ML/AI')}
+                            {renderSignalBadge(breakdown.entropy_signal, 'Entropy')}
+                        </div>
                     </div>
-                    <div>
-                        {renderSignalProgressBar(breakdown.context_signal, '🔗 Context Signal')}
-                        {renderSignalProgressBar(breakdown.entropy_signal, '📊 Entropy Signal')}
-                    </div>
-                </div>
 
-                <div style={{
-                    marginTop: 20,
-                    paddingTop: 16,
-                    borderTop: '2px solid #cbd5e1',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                }}>
-                    <div>
-                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Final Weighted Score</div>
-                        <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a' }}>
+                    {/* Middle: Final Score */}
+                    <div style={{ paddingLeft: 32, borderLeft: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#94a3b8', fontWeight: 600, marginBottom: 4 }}>
+                            Final Score
+                        </div>
+                        <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>
                             {finalScore.toFixed(2)}
                         </div>
-                    </div>
-                    <div>
-                        {getConfidenceLevelBadge(classification.confidence_level)}
-                    </div>
-                    {classification.engine_version && (
-                        <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                            Engine: {classification.engine_version}
+                        <div style={{ marginTop: 4 }}>
+                            {getConfidenceLevelBadge(classification.confidence_level)}
                         </div>
-                    )}
-                </div>
+                    </div>
 
-                {/* Presidio Availability Indicator */}
-                {breakdown.presidio_signal && (
-                    <div style={{ marginTop: 12, fontSize: 11, color: '#64748b' }}>
-                        {breakdown.presidio_signal.confidence > 0 ? (
-                            <span style={{ color: '#10b981' }}>✓ Presidio ML validation active</span>
-                        ) : (
-                            <span style={{ color: '#94a3b8' }}>○ Presidio ML not available (rules-only mode)</span>
+                    {/* Right: Feedback */}
+                    <div style={{ paddingLeft: 32, borderLeft: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#94a3b8', fontWeight: 600 }}>
+                            Validity
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); handleFeedback(finding, 'CONFIRMED'); }}
+                                style={{
+                                    border: '1px solid #d1d5db',
+                                    background: 'white',
+                                    borderRadius: 4,
+                                    padding: '4px 8px',
+                                    fontSize: 12,
+                                    cursor: 'pointer',
+                                    color: '#15803d',
+                                    display: 'flex', alignItems: 'center', gap: 4
+                                }}
+                            >
+                                <span>Correct</span>
+                            </button>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); handleFeedback(finding, 'FALSE_POSITIVE'); }}
+                                style={{
+                                    border: '1px solid #d1d5db',
+                                    background: 'white',
+                                    borderRadius: 4,
+                                    padding: '4px 8px',
+                                    fontSize: 12,
+                                    cursor: 'pointer',
+                                    color: '#b91c1c',
+                                    display: 'flex', alignItems: 'center', gap: 4
+                                }}
+                            >
+                                <span>False Positive</span>
+                            </button>
+                        </div>
+
+                        {/* Status Feedback */}
+                        {finding.review_status === 'confirmed' && (
+                            <div style={{ fontSize: 11, color: '#15803d' }}>✓ User Verified</div>
+                        )}
+                        {finding.review_status === 'false_positive' && (
+                            <div style={{ fontSize: 11, color: '#b91c1c' }}>✕ User Rejected</div>
                         )}
                     </div>
-                )}
+                </div>
+
+                {/* Explanation Text */}
+                <div style={{ marginTop: 16, fontSize: 13, color: '#64748b', fontStyle: 'italic' }}>
+                    "{breakdown.presidio_signal?.explanation || breakdown.rule_signal?.explanation}"
+                </div>
             </div>
         );
     };

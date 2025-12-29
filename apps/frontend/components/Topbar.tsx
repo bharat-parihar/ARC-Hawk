@@ -114,6 +114,7 @@ export default function Topbar({
                                 color: colors.neutral[700],
                                 fontWeight: theme.fontWeight.semibold,
                             }}
+                            suppressHydrationWarning
                         >
                             {new Date(scanTime).toLocaleString('en-US', {
                                 month: 'short',
