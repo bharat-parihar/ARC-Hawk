@@ -29,6 +29,7 @@ export default function SummaryCards({
                 value={totalFindings}
                 subtitle="Across all assets"
                 color={colors.nodeColors.asset}
+                tooltip="Total number of data points scanned and identified."
             />
 
             <Card
@@ -36,6 +37,7 @@ export default function SummaryCards({
                 value={sensitivePIICount}
                 subtitle="Requires consent & protection"
                 color={colors.state.risk}
+                tooltip="Personal Identifiable Information requiring strict compliance."
             />
 
             <Card
@@ -43,6 +45,7 @@ export default function SummaryCards({
                 value={highRiskAssets}
                 subtitle="Risk score ≥ 70"
                 color={colors.state.warning}
+                tooltip="Assets containing high volume or high sensitivity data."
             />
 
             <Card
@@ -50,6 +53,7 @@ export default function SummaryCards({
                 value={criticalFindings}
                 subtitle="Immediate attention required"
                 color={colors.state.risk}
+                tooltip="Findings with Critical severity requiring immediate remediation."
             />
         </div>
     );
@@ -60,16 +64,19 @@ function Card({
     value,
     subtitle,
     color,
+    tooltip,
 }: {
     label: string;
     value: number;
     subtitle: string;
     color: string;
+    tooltip?: string;
 }) {
     const [isHovered, setIsHovered] = React.useState(false);
 
     return (
         <div
+            title={tooltip} // Native tooltip for simplicity
             style={{
                 background: colors.background.surface,
                 border: `1px solid ${colors.border.default}`,
@@ -78,39 +85,42 @@ function Card({
                 boxShadow: isHovered ? theme.shadows.lg : theme.shadows.sm,
                 transition: 'all 0.2s ease',
                 transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
-                cursor: 'default',
+                cursor: 'help', // Cursor changed to indicate interactivity
             }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
+
+
             <div
                 style={{
-                    fontSize: theme.fontSize.sm,
+                    fontSize: '11px',
                     color: colors.text.secondary,
-                    marginBottom: '12px',
-                    fontWeight: theme.fontWeight.bold,
+                    marginBottom: '10px',
+                    fontWeight: 800,
                     textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
+                    letterSpacing: '0.08em',
                 }}
             >
                 {label}
             </div>
             <div
                 style={{
-                    fontSize: '40px',
-                    fontWeight: theme.fontWeight.extrabold,
+                    fontSize: '42px',
+                    fontWeight: 900,
                     color: color,
-                    lineHeight: 1.2,
+                    lineHeight: 1,
                     marginBottom: '8px',
+                    letterSpacing: '-0.03em',
                 }}
             >
                 {value.toLocaleString()}
             </div>
             <div
                 style={{
-                    fontSize: theme.fontSize.sm,
+                    fontSize: '13px',
                     color: colors.text.muted,
-                    fontWeight: theme.fontWeight.medium,
+                    fontWeight: 600,
                 }}
             >
                 {subtitle}

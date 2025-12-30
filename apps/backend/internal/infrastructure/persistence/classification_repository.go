@@ -81,6 +81,7 @@ func (r *PostgresRepository) GetClassificationsByFindingID(ctx context.Context, 
 }
 
 func (r *PostgresRepository) GetClassificationSummary(ctx context.Context) (map[string]interface{}, error) {
+	// Query classification types
 	query := `
 		SELECT 
 			classification_type, 
@@ -114,6 +115,31 @@ func (r *PostgresRepository) GetClassificationSummary(ctx context.Context) (map[
 	}
 
 	summary["by_type"] = typeBreakdown
+
+	// Query severity breakdown
+	severityQuery := `
+		SELECT 
+			severity, 
+			COUNT(*) as count
+		FROM findings
+		GROUP BY severity`
+
+	severityRows, err := r.db.QueryContext(ctx, severityQuery)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query severity stats: %w", err)
+	}
+	defer severityRows.Close()
+
+	severityBreakdown := make(map[string]int)
+	for severityRows.Next() {
+		var severity string
+		var count int
+		if err := severityRows.Scan(&severity, &count); err != nil {
+			return nil, err
+		}
+		severityBreakdown[severity] = count
+	}
+	summary["by_severity"] = severityBreakdown
 
 	// Get total count
 	var total int

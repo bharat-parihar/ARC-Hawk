@@ -93,7 +93,7 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
             <div
                 style={{
                     padding: '12px 16px',
-                    background: 'rgba(255, 255, 255, 0.6)', // Increased opacity for better contrast
+                    background: `linear-gradient(to bottom, #ffffff, ${nodeColors.bg})`, // Subtle light gradient
                     borderBottom: `1px solid ${nodeColors.border}`,
                     display: 'flex',
                     alignItems: 'center',
@@ -101,15 +101,15 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
                 }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '18px' }}>{getIcon()}</span>
+                    <span style={{ fontSize: '18px', filter: 'grayscale(0.2)' }}>{getIcon()}</span>
                     <span
                         style={{
-                            fontSize: theme.fontSize.sm, // Increased from xs to sm
-                            fontWeight: theme.fontWeight.bold,
+                            fontSize: '11px',
+                            fontWeight: 800,
                             color: nodeColors.text,
                             textTransform: 'uppercase',
                             letterSpacing: '0.05em',
-                            opacity: 1, // Removed opacity reduction
+                            opacity: 0.8,
                         }}
                     >
                         {type.replace('_', ' ')}
@@ -119,33 +119,36 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
                 {/* Risk Indicator for high-risk nodes */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {review_status === 'confirmed' && (
-                        <span title="Verified PII" style={{ fontSize: '14px' }}>✅</span>
+                        <div title="Verified PII" style={{ fontSize: '12px', color: colors.state.success }}>Verified</div>
                     )}
                     {review_status === 'false_positive' && (
                         <span
                             title="Marked False Positive"
                             style={{
-                                fontSize: '10px',
+                                fontSize: '9px',
                                 padding: '2px 4px',
-                                background: '#e5e7eb',
+                                background: '#f3f4f6',
                                 borderRadius: '4px',
-                                color: '#6b7280',
-                                fontWeight: 'bold'
+                                color: '#9ca3af',
+                                fontWeight: '700',
+                                border: '1px solid #e5e7eb'
                             }}
                         >
-                            FALSE POSITIVE
+                            FALSE POS
                         </span>
                     )}
-                    {(!review_status || review_status === 'pending') && risk_score >= 70 && (
+                    {(!review_status || review_status === 'pending') && risk_score >= 1 && (
                         <div
+                            title={`Risk Score: ${risk_score}`}
                             style={{
-                                width: '10px',
-                                height: '10px',
-                                borderRadius: '50%',
-                                backgroundColor: risk_score >= 90 ? colors.state.risk : colors.state.warning,
-                                boxShadow: `0 0 8px ${risk_score >= 90 ? colors.state.risk : colors.state.warning}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '10px',
+                                fontWeight: 800,
+                                color: risk_score >= 70 ? colors.state.risk : (risk_score >= 40 ? colors.state.warning : colors.text.muted),
                             }}
-                        />
+                        >
+                            {risk_score}
+                        </div>
                     )}
                 </div>
             </div>

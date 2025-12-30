@@ -91,41 +91,72 @@ export default function InfoPanel({ nodeId, nodeData, onClose }: InfoPanelProps)
                 <div
                     style={{
                         padding: '24px',
-                        borderBottom: `1px solid ${colors.border.default}`,
+                        borderBottom: `1px solid ${colors.border.subtle}`,
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        backgroundColor: colors.background.elevated,
+                        background: `linear-gradient(to bottom, #ffffff, ${colors.background.elevated})`,
                     }}
                 >
-                    <h2
-                        style={{
-                            fontSize: theme.fontSize.xl,
-                            fontWeight: theme.fontWeight.bold,
-                            color: colors.text.primary,
-                        }}
-                    >
-                        AssetDetails
-                    </h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                            width: 40, height: 40,
+                            borderRadius: '8px',
+                            background: colors.background.surface,
+                            border: `1px solid ${colors.border.default}`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '20px'
+                        }}>
+                            {nodeData?.type === 'system' ? '🏢' :
+                                nodeData?.type === 'asset' ? '📦' :
+                                    nodeData?.type === 'finding' ? '🔍' : '📋'}
+                        </div>
+                        <div>
+                            <h2
+                                style={{
+                                    fontSize: theme.fontSize.lg,
+                                    fontWeight: 800,
+                                    color: colors.text.primary,
+                                    margin: 0,
+                                    lineHeight: 1.2
+                                }}
+                            >
+                                {nodeData?.label || 'Details'}
+                            </h2>
+                            <span style={{
+                                fontSize: '11px',
+                                color: colors.text.secondary,
+                                textTransform: 'uppercase',
+                                fontWeight: 700,
+                                letterSpacing: '0.05em'
+                            }}>
+                                {nodeData?.type?.toUpperCase() || 'INFO'}
+                            </span>
+                        </div>
+                    </div>
+
                     <button
                         onClick={onClose}
                         style={{
                             background: 'transparent',
                             border: 'none',
-                            fontSize: '24px',
+                            fontSize: '20px',
                             cursor: 'pointer',
-                            padding: '4px',
-                            color: colors.neutral[500],
-                            transition: 'color 0.2s ease',
+                            padding: '8px',
+                            borderRadius: '6px',
+                            color: colors.text.muted,
+                            transition: 'all 0.2s',
                         }}
                         onMouseEnter={(e) => {
-                            e.currentTarget.style.color = colors.neutral[900];
+                            e.currentTarget.style.backgroundColor = colors.background.surface;
+                            e.currentTarget.style.color = colors.text.primary;
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.style.color = colors.neutral[500];
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                            e.currentTarget.style.color = colors.text.muted;
                         }}
                     >
-                        ×
+                        ✕
                     </button>
                 </div>
 
@@ -298,24 +329,29 @@ export default function InfoPanel({ nodeId, nodeData, onClose }: InfoPanelProps)
                         onClick={onClose}
                         style={{
                             width: '100%',
-                            padding: '12px',
-                            backgroundColor: colors.blue[600],
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: theme.borderRadius.md,
-                            fontSize: theme.fontSize.base,
-                            fontWeight: theme.fontWeight.semibold,
+                            padding: '10px',
+                            backgroundColor: '#ffffff',
+                            color: colors.text.primary,
+                            border: `1px solid ${colors.border.strong}`,
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            fontWeight: 600,
                             cursor: 'pointer',
                             transition: 'all 0.2s ease',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                         }}
                         onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = colors.blue[700];
+                            e.currentTarget.style.backgroundColor = colors.background.surface;
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                            e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = colors.blue[600];
+                            e.currentTarget.style.backgroundColor = '#ffffff';
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
                         }}
                     >
-                        Close
+                        Close Panel
                     </button>
                 </div>
             </div>
@@ -340,12 +376,17 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         <div>
             <h3
                 style={{
-                    fontSize: theme.fontSize.sm,
-                    fontWeight: theme.fontWeight.bold,
-                    color: colors.neutral[500],
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    color: colors.text.muted,
                     textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    marginBottom: '12px',
+                    letterSpacing: '0.08em',
+                    marginBottom: '16px',
+                    borderBottom: `1px solid ${colors.border.subtle}`,
+                    paddingBottom: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
                 }}
             >
                 {title}
@@ -389,29 +430,29 @@ function PropertyRow({
             style={{
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 padding: highlight ? '12px' : '8px 0',
-                backgroundColor: highlight ? colors.blue[50] : 'transparent',
-                borderRadius: highlight ? theme.borderRadius.md : 0,
-                paddingLeft: highlight ? '12px' : 0,
-                paddingRight: highlight ? '12px' : 0,
+                backgroundColor: highlight ? colors.background.surface : 'transparent',
+                borderRadius: highlight ? '8px' : 0,
+                border: highlight ? `1px solid ${colors.border.subtle}` : 'none',
             }}
         >
             <div
                 style={{
-                    fontSize: theme.fontSize.sm,
-                    color: colors.neutral[600],
-                    fontWeight: theme.fontWeight.medium,
+                    fontSize: '13px',
+                    color: colors.text.secondary,
+                    fontWeight: 500,
                     minWidth: '120px',
+                    marginTop: '2px' // optical alignment
                 }}
             >
                 {label}
             </div>
             <div
                 style={{
-                    fontSize: theme.fontSize.sm,
-                    color: colors.neutral[900],
-                    fontWeight: theme.fontWeight.semibold,
+                    fontSize: '13px',
+                    color: colors.text.primary,
+                    fontWeight: 600,
                     textAlign: 'right',
                     flex: 1,
                     display: 'flex',
@@ -419,6 +460,7 @@ function PropertyRow({
                     alignItems: 'center',
                     gap: '8px',
                     wordBreak: 'break-word',
+                    lineHeight: 1.5
                 }}
             >
                 {value}
@@ -429,12 +471,16 @@ function PropertyRow({
                             background: 'transparent',
                             border: 'none',
                             cursor: 'pointer',
-                            fontSize: '16px',
+                            fontSize: '14px',
                             padding: '4px',
+                            opacity: 0.6,
+                            transition: 'opacity 0.2s'
                         }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
                         title="Copy to clipboard"
                     >
-                        {copied ? '✓' : '📋'}
+                        {copied ? '✓' : '❐'}
                     </button>
                 )}
             </div>

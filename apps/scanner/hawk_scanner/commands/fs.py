@@ -2,11 +2,18 @@ import argparse
 from google.cloud import storage
 from rich.console import Console
 from hawk_scanner.internals import system
+from hawk_scanner.internals.binary_detection import is_text_file, get_binary_file_stats
 import os
 import concurrent.futures
 import time
 
 def process_file(args, file_path, key, results):
+    # NEW: Skip binary files to prevent null byte issues
+    if not is_text_file(file_path):
+        if hasattr(args, 'verbose') and args.verbose:
+            system.print_info(args, f"Skipped binary file: {file_path}")
+        return
+    
     matches = system.read_match_strings(args, file_path, 'fs')
     file_data = system.getFileData(file_path)
     if matches:
@@ -45,6 +52,10 @@ def execute(args):
                 else:
                     files = system.list_all_files_iteratively(args, path, exclude_patterns)
                 
+                # NEW: Analyze binary vs text files
+                file_stats = get_binary_file_stats(files)
+                system.print_info(args, f"File analysis: {file_stats['text']} text files, {file_stats['binary']} binary files skipped")
+                
                 # Use ThreadPoolExecutor for parallel processing
                 file_count = 0
                 with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -56,7 +67,7 @@ def execute(args):
                     # Wait for all tasks to complete
                     concurrent.futures.wait(futures)
                 end_time = time.time()
-                system.print_info(args, f"Time taken to analyze {file_count} files: {end_time - start_time} seconds")
+                system.print_info(args, f"Time taken to analyze {file_stats['text']} text files: {end_time - start_time} seconds")
         else:
             system.print_error(args, "No filesystem 'fs' connection details found in connection.yml")
     else:

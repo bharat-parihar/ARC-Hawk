@@ -4,18 +4,8 @@
  * Service for asset-specific API calls
  */
 
-import axios from 'axios';
+import { get, apiClient } from '@/utils/api-client';
 import { Asset } from '@/types';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
-
-const apiClient = axios.create({
-    baseURL: API_BASE_URL,
-    headers: {
-        'Content-Type': 'application/json',
-    },
-    timeout: 10000,
-});
 
 // ============================================
 // ASSETS API
@@ -26,8 +16,8 @@ const apiClient = axios.create({
  */
 export async function getAsset(id: string): Promise<Asset> {
     try {
-        const response = await apiClient.get(`/assets/${id}`);
-        return response.data.data;
+        const res = await get<{ data: Asset }>(`/assets/${id}`);
+        return res.data;
     } catch (error) {
         console.error(`Error fetching asset ${id}:`, error);
         throw new Error('Failed to fetch asset details');
@@ -43,8 +33,12 @@ export async function getAssets(params?: {
     sort_by?: string;
 }): Promise<{ assets: Asset[]; total: number }> {
     try {
-        const response = await apiClient.get('/assets', { params });
-        return response.data.data;
+        // Backend returns: { total: number, data: Asset[] }
+        const res = await get<{ data: Asset[]; total: number }>('/assets', params);
+        return {
+            assets: res.data || [],
+            total: res.total || 0
+        };
     } catch (error) {
         console.error('Error fetching assets:', error);
         throw new Error('Failed to fetch assets');

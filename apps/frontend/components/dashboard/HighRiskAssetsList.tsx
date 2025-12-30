@@ -13,8 +13,7 @@ interface HighRiskAssetsListProps {
 export default function HighRiskAssetsList({ assets, onAssetClick }: HighRiskAssetsListProps) {
     const highRiskAssets = assets
         .filter(asset => asset.risk_score >= 70)
-        .sort((a, b) => b.risk_score - a.risk_score)
-        .slice(0, 5); // Show top 5
+        .sort((a, b) => b.risk_score - a.risk_score);
 
     return (
         <div style={{
@@ -84,13 +83,13 @@ export default function HighRiskAssetsList({ assets, onAssetClick }: HighRiskAss
                                     width: '40px',
                                     height: '40px',
                                     borderRadius: '8px',
-                                    backgroundColor: colors.semantic.node.asset.bg,
+                                    backgroundColor: colors.background.muted,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     fontSize: '20px',
-                                    border: `1px solid ${colors.semantic.node.asset.border}`,
-                                    color: colors.semantic.node.asset.text,
+                                    border: `1px solid ${colors.nodeColors.asset}`,
+                                    color: colors.nodeColors.asset,
                                 }}>
                                     📦
                                 </div>

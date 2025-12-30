@@ -1,264 +1,156 @@
 /**
- * ARC-Hawk Design System - Colors (Balanced Light Theme)
- * 
- * Professional light theme with proper contrast
- * Soft backgrounds, clear text, visible elements
+ * ARC-Hawk Design System - Colors (High Contrast Monochrome)
+ *
+ * Strict, high-visibility black & white palette.
+ * Text is pure black or very dark gray.
+ * Backgrounds are white.
  */
 
 // ============================================
-// BALANCED LIGHT THEME
-// ============================================
-
-export const background = {
-    primary: '#F8FAFC',     // Slate 50 - Soft white background
-    surface: '#FFFFFF',     // Pure white - Cards/elevated
-    card: '#FFFFFF',        // White cards with shadows
-    elevated: '#F1F5F9',    // Slate 100 - Subtle elevation
-} as const;
-
-export const border = {
-    default: '#CBD5E1',     // Slate 300 - Visible borders
-    subtle: '#E2E8F0',      // Slate 200 - Subtle dividers
-    strong: '#94A3B8',      // Slate 400 - Strong emphasis
-} as const;
-
-export const text = {
-    primary: '#0F172A',     // Slate 900 - High contrast text
-    secondary: '#475569',   // Slate 600 - Clear secondary
-    muted: '#64748B',       // Slate 500 - Readable muted
-    inverse: '#FFFFFF',     // White on dark
-} as const;
-
-// ============================================
-// NODE COLORS
-// ============================================
-
-export const nodeColors = {
-    system: '#3B82F6',      // Blue 500 - Clear System
-    asset: '#6366F1',       // Indigo 500 - Requested Indigo
-    pii: '#F59E0B',         // Amber 500 - Requested PII
-    sensitive: '#EF4444',   // Red 500 - Requested Sensitive
-    category: '#64748B',    // Slate 500 - Generic Category
-} as const;
-
-// ============================================
-// STATE COLORS
-// ============================================
-
-export const state = {
-    risk: '#DC2626',        // Red 600
-    success: '#059669',     // Emerald 600
-    warning: '#D97706',     // Amber 600
-    info: '#0284C7',        // Sky 600
-} as const;
-
-// ============================================
-// BACKWARD COMPATIBILITY
+// PRIMITIVES
 // ============================================
 
 export const neutral = {
-    50: '#F8FAFC',
-    100: '#F1F5F9',
-    200: '#E2E8F0',
-    300: '#CBD5E1',
-    400: '#94A3B8',
-    500: '#64748B',
-    600: '#475569',
-    700: '#334155',
-    800: '#1E293B',
-    900: '#0F172A',
+    50: '#F9FAFB',  // Very light gray
+    100: '#F3F4F6',
+    200: '#E5E7EB',
+    300: '#D4D4D4', // Distinct border
+    400: '#A3A3A3',
+    500: '#737373',
+    600: '#525252',
+    700: '#404040',
+    800: '#262626',
+    900: '#000000', // Pure Black
 } as const;
 
-export const blue = {
-    50: '#EFF6FF',
-    100: '#DBEAFE',
-    200: '#BFDBFE',
-    500: '#3B82F6',
-    600: '#2563EB',
-    700: '#1D4ED8',
-    800: '#1E40AF',
+export const brand = {
+    primary: '#000000',     // Black Brand (Swiss Style)
+    hover: '#333333',       // Dark Gray
 } as const;
 
-export const red = {
-    50: '#FEF2F2',
-    100: '#FEE2E2',
-    200: '#FECACA',
-    300: '#FCA5A5',
-    400: '#F87171',
-    500: '#EF4444',
-    600: '#DC2626',
-    700: '#B91C1C',
-    800: '#991B1B',
-    900: '#7F1D1D',
-} as const;
-
-export const amber = {
-    50: '#FFFBEB',
-    100: '#FEF3C7',
-    200: '#FDE68A',
-    300: '#FCD34D',
-    400: '#FBBF24',
-    500: '#F59E0B',
-    600: '#D97706',
-    700: '#B45309',
-    800: '#92400E',
-    900: '#78350F',
-} as const;
-
-export const emerald = {
-    50: '#ECFDF5',
-    100: '#D1FAE5',
-    200: '#A7F3D0',
-    300: '#6EE7B7',
-    400: '#34D399',
-    500: '#10B981',
-    600: '#059669',
-    700: '#047857',
-    800: '#065F46',
-    900: '#064E3B',
-} as const;
-
-export const purple = {
-    50: '#FAF5FF',
-    600: '#7C3AED',
-} as const;
-
-export const indigo = {
-    50: '#EEF2FF',
-    500: '#6366F1',
+export const status = {
+    success: '#166534',     // Dark Green (High Contrast)
+    warning: '#854D0E',     // Dark Amber
+    risk: '#991B1B',        // Dark Red
+    info: '#1E40AF',        // Dark Blue
 } as const;
 
 // ============================================
 // SEMANTIC MAPPINGS
 // ============================================
 
-export const semantic = {
-    background: {
-        primary: background.primary,
-        surface: background.surface,
-        card: background.card,
-        elevated: background.elevated,
-    },
-    text: {
-        primary: text.primary,
-        secondary: text.secondary,
-        muted: text.muted,
-        inverse: text.inverse,
-    },
-    border: {
-        default: border.default,
-        subtle: border.subtle,
-        strong: border.strong,
-    },
-    state: {
-        risk: state.risk,
-        success: state.success,
-        warning: state.warning,
-        info: state.info,
-    },
-    node: {
-        system: {
-            bg: '#EFF6FF',        // Blue 50
-            border: nodeColors.system,
-            text: '#1E3A8A',      // Blue 900
-        },
-        asset: {
-            bg: '#EEF2FF',        // Indigo 50
-            border: nodeColors.asset,
-            text: '#312E81',      // Indigo 900
-        },
-        pii: {
-            bg: '#FFFBEB',        // Amber 50
-            border: nodeColors.pii,
-            text: '#78350F',      // Amber 900
-        },
-        sensitive: {
-            bg: '#FEF2F2',       // Red 50
-            border: nodeColors.sensitive,
-            text: '#7F1D1D',     // Red 900
-        },
-        dataCategory: {
-            bg: '#F8FAFC',        // Slate 50
-            border: nodeColors.category,
-            text: '#475569',      // Slate 600
-        },
-        finding: {
-            bg: background.surface,
-            border: border.default,
-            text: text.primary,
-        },
-        findingCritical: {
-            bg: '#FEF2F2',        // Red 50
-            border: state.risk,
-            text: '#7F1D1D',      // Red 900
-        },
-    },
-    edge: {
-        default: '#94A3B8',                // Slate 400 - Visible
-        highlight: nodeColors.system,
-        critical: state.risk,
-        classification: state.success,
-    },
+export const background = {
+    primary: '#FFFFFF',     // Pure White
+    surface: '#FFFFFF',
+    elevated: '#FFFFFF',
+    muted: neutral[100],
+    card: '#FFFFFF',
+} as const;
+
+export const border = {
+    default: '#D4D4D4',     // High contrast border
+    subtle: '#E5E7EB',
+    strong: '#000000',      // Black border for emphasis
+} as const;
+
+export const text = {
+    primary: '#000000',     // Pure Black
+    secondary: '#262626',   // Almost Black
+    muted: '#525252',       // Dark Gray (AA Compliant)
+    inverse: '#FFFFFF',
+} as const;
+
+export const nodeColors = {
+    system: '#000000',      // Black
+    asset: '#404040',       // Dark Gray
+    pii: '#D97706',         // Dark Amber
+    sensitive: '#DC2626',   // Red
+    category: '#525252',    // Gray
 } as const;
 
 // ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-export function getNodeColor(type: string, riskScore: number = 0) {
-    switch (type) {
-        case 'system':
-            return semantic.node.system;
-        case 'asset':
-        case 'file':
-        case 'table':
-            return semantic.node.asset;
-        case 'data_category':
-        case 'category':
-            return semantic.node.dataCategory;
-        case 'finding':
-            return riskScore >= 90
-                ? semantic.node.findingCritical
-                : semantic.node.finding;
-        default:
-            return semantic.node.finding;
-    }
-}
-
-export function getEdgeColor(edgeType: string) {
-    switch (edgeType) {
-        case 'EXPOSES':
-        case 'CRITICAL':
-            return semantic.edge.critical;
-        case 'CLASSIFIED_AS':
-        case 'CLASSIFICATION':
-            return semantic.edge.classification;
-        case 'CONTAINS':
-        case 'HAS':
-        default:
-            return semantic.edge.default;
-    }
-}
-
-// ============================================
-// EXPORTS
+// THEME EXPORTS
 // ============================================
 
 export const colors = {
+    neutral,
+    brand,
+    status,
     background,
     border,
     text,
     nodeColors,
-    state,
-    semantic,
-    // Backward compatibility
-    neutral,
-    blue,
-    red,
-    amber,
-    emerald,
-    purple,
-    indigo,
+
+    // Backward compatibility for existing components
+    state: {
+        risk: status.risk,
+        success: status.success,
+        warning: status.warning,
+        info: status.info,
+    },
+    semantic: {
+        background,
+        border,
+        text,
+        state: status,
+        node: nodeColors,
+    },
+    // Legacy palettes (kept for build safety, but we should avoid using them directly)
+    blue: {
+        50: '#EFF6FF', 100: '#DBEAFE', 200: '#BFDBFE', 300: '#93C5FD',
+        400: '#60A5FA', 500: '#3B82F6', 600: '#2563EB', 700: '#1D4ED8',
+        800: '#1E40AF', 900: '#1E3A8A'
+    },
+    red: {
+        50: '#FEF2F2', 100: '#FEE2E2', 200: '#FECACA', 300: '#FCA5A5',
+        400: '#F87171', 500: '#EF4444', 600: '#DC2626', 700: '#B91C1C',
+        800: '#991B1B', 900: '#7F1D1D'
+    },
+    amber: {
+        50: '#FFFBEB', 100: '#FEF3C7', 200: '#FDE68A', 300: '#FCD34D',
+        400: '#FBBF24', 500: '#F59E0B', 600: '#D97706', 700: '#B45309',
+        800: '#92400E', 900: '#78350F'
+    },
+    emerald: {
+        50: '#ECFDF5', 100: '#D1FAE5', 200: '#A7F3D0', 300: '#6EE7B7',
+        400: '#34D399', 500: '#10B981', 600: '#059669', 700: '#047857',
+        800: '#065F46', 900: '#064E3B'
+    },
+    indigo: {
+        50: '#EEF2FF', 100: '#E0E7FF', 200: '#C7D2FE', 300: '#A5B4FC',
+        400: '#818CF8', 500: '#6366F1', 600: '#4F46E5', 700: '#4338CA',
+        800: '#3730A3', 900: '#312E81'
+    },
+    purple: {
+        50: '#FAF5FF', 100: '#F3E8FF', 200: '#E9D5FF', 300: '#D8B4FE',
+        400: '#C084FC', 500: '#A855F7', 600: '#9333EA', 700: '#7E22CE',
+        800: '#6B21A8', 900: '#581C87'
+    },
 } as const;
+
+export function getNodeColor(type: string, riskScore: number = 0) {
+    switch (type) {
+        case 'system':
+            return { bg: '#F3F4F6', border: '#000000', text: '#000000' };
+        case 'asset':
+        case 'file':
+        case 'table':
+            return { bg: '#FFFFFF', border: '#525252', text: '#000000' };
+        case 'finding':
+            const isRisk = riskScore >= 90;
+            return {
+                bg: isRisk ? '#FEF2F2' : '#FFFFFF',
+                border: isRisk ? status.risk : border.default,
+                text: isRisk ? '#991B1B' : '#000000'
+            };
+        default:
+            return { bg: '#F9FAFB', border: border.default, text: '#000000' };
+    }
+}
+
+export function getEdgeColor(type: string) {
+    if (type === 'EXPOSES') return status.risk;
+    return '#525252'; // Dark gray edges
+}
 
 export default colors;

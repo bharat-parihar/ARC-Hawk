@@ -354,6 +354,23 @@ def main():
 
         console.print(table)
 
+    # NEW: Auto-ingestion to backend API
+    if hasattr(args, 'ingest_url') and args.ingest_url:
+        from hawk_scanner.internals.auto_ingest import ingest_scan_results, validate_ingest_url
+        
+        if validate_ingest_url(args.ingest_url):
+            scan_metadata = {
+                "scanner_version": "hawk-eye-scanner",
+                "scan_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "command": args.command,
+                "execution_time": time.time() - start_time,
+                "total_findings": sum(len(results) for results in grouped_results.values())
+            }
+            ingest_scan_results(args, grouped_results, scan_metadata)
+        else:
+            console.print(f"[bold red]❌ Invalid ingestion URL: {args.ingest_url}[/bold red]")
+            console.print("[yellow]URL should end with /ingest, /api/v1/ingest, or /api/ingest[/yellow]")
+
     if args.hawk_thuu:
         console.print("Hawk thuuu, Spitting on that thang!....")
         os.system("rm -rf data/*")

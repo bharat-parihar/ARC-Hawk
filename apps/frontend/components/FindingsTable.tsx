@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { FindingWithDetails, SignalScore } from '@/types';
 import { findingsApi } from '@/services/findings.api';
+import { colors } from '@/design-system/colors';
 
 
 interface FindingsTableProps {
@@ -92,15 +93,24 @@ export default function FindingsTable({
     const getConfidenceLevelBadge = (level?: string) => {
         if (!level) return null;
 
-        const levelClasses: Record<string, string> = {
-            'Confirmed': 'bg-green-100 text-green-800 border-green-300',
-            'High Confidence': 'bg-blue-100 text-blue-800 border-blue-300',
-            'Needs Review': 'bg-yellow-100 text-yellow-800 border-yellow-300',
-            'Discard': 'bg-gray-100 text-gray-600 border-gray-300',
+        const getStyle = (l: string) => {
+            switch (l) {
+                case 'Confirmed': return { bg: '#DCFCE7', text: '#166534', border: '#86EFAC' };
+                case 'High Confidence': return { bg: '#DBEAFE', text: '#1E40AF', border: '#93C5FD' };
+                case 'Needs Review': return { bg: '#FEF9C3', text: '#854D0E', border: '#FDE047' };
+                case 'Discard': return { bg: '#F3F4F6', text: '#4B5563', border: '#D1D5DB' };
+                default: return { bg: '#F3F4F6', text: '#4B5563', border: '#D1D5DB' };
+            }
         };
 
+        const style = getStyle(level);
+
         return (
-            <span className={`px-2 py-1 text-xs font-semibold rounded border ${levelClasses[level] || ''}`}>
+            <span style={{
+                padding: '2px 8px', borderRadius: 4, border: `1px solid ${style.border}`,
+                fontSize: 12, fontWeight: 600,
+                backgroundColor: style.bg, color: style.text
+            }}>
                 {level}
             </span>
         );
@@ -109,9 +119,6 @@ export default function FindingsTable({
     const renderSignalBadge = (signal?: SignalScore, label?: string) => {
         if (!signal) return null;
 
-        // Minimal visual indicator: Color code based on contribution
-        // High contribution (>30% of weight) = Primary Color
-        // Low contribution = Muted Color
         const isContributionSignificant = signal.weighted_score > 0.1;
 
         return (
@@ -126,15 +133,15 @@ export default function FindingsTable({
                     width: 6,
                     height: 6,
                     borderRadius: '50%',
-                    backgroundColor: isContributionSignificant ? '#3b82f6' : '#cbd5e1'
+                    backgroundColor: isContributionSignificant ? colors.status.info : colors.border.strong
                 }} />
-                <span style={{ fontSize: 13, fontWeight: 500, color: '#334155' }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: colors.text.secondary }}>
                     {label}:
                 </span>
-                <span style={{ fontSize: 13, fontFamily: 'monospace', color: '#0f172a' }}>
-                    {signal.confidence.toFixed(2)}
+                <span style={{ fontSize: 13, fontFamily: 'monospace', color: colors.text.primary }}>
+                    {(signal.confidence * 100).toFixed(0)}%
                 </span>
-                <span style={{ fontSize: 12, color: '#64748b' }}>
+                <span style={{ fontSize: 12, color: colors.text.muted }}>
                     ({(signal.weight * 100).toFixed(0)}% wgt)
                 </span>
             </div>
@@ -175,7 +182,7 @@ export default function FindingsTable({
                             Final Score
                         </div>
                         <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>
-                            {finalScore.toFixed(2)}
+                            {(finalScore * 100).toFixed(0)}%
                         </div>
                         <div style={{ marginTop: 4 }}>
                             {getConfidenceLevelBadge(classification.confidence_level)}
@@ -231,9 +238,27 @@ export default function FindingsTable({
                     </div>
                 </div>
 
-                {/* Explanation Text */}
-                <div style={{ marginTop: 16, fontSize: 13, color: '#64748b', fontStyle: 'italic' }}>
-                    "{breakdown.presidio_signal?.explanation || breakdown.rule_signal?.explanation}"
+                <div style={{ marginTop: 16 }}>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#94a3b8', fontWeight: 600, marginBottom: 8 }}>
+                        Full Evidence ({finding.matches.length})
+                    </div>
+                    <div style={{
+                        background: '#f1f5f9',
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        color: '#334155',
+                        maxHeight: 100,
+                        overflowY: 'auto',
+                        whiteSpace: 'pre-wrap'
+                    }}>
+                        {finding.matches.join('\n')}
+                    </div>
+                </div>
+
+                <div style={{ marginTop: 16, fontSize: 13, color: '#64748b', fontStyle: 'italic', borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+                    "{breakdown.presidio_signal?.explanation || breakdown.rule_signal?.explanation || 'No specific explanation available.'}"
                 </div>
             </div>
         );
@@ -294,48 +319,52 @@ export default function FindingsTable({
 
                                 return (
                                     <React.Fragment key={finding.id}>
-                                        <tr style={{
-                                            cursor: 'pointer',
-                                            backgroundColor: isExpanded ? '#f1f5f9' : 'transparent'
-                                        }}>
-                                            <td onClick={() => toggleRowExpand(finding.id)}>
-                                                <span style={{ fontSize: 18, userSelect: 'none' }}>
-                                                    {isExpanded ? '▼' : '▶'}
-                                                </span>
+                                        <tr
+                                            onClick={() => toggleRowExpand(finding.id)}
+                                            style={{
+                                                cursor: 'pointer',
+                                                backgroundColor: isExpanded ? '#f8fafc' : 'transparent',
+                                                borderBottom: '1px solid #e2e8f0',
+                                            }}
+                                            className="hover:bg-slate-50 transition-colors"
+                                        >
+                                            <td style={{ padding: '16px 8px', textAlign: 'center', color: '#94a3b8' }}>
+                                                {isExpanded ? '▼' : '▶'}
                                             </td>
-                                            <td>
-                                                <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{finding.asset_name}</div>
-                                                <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{finding.asset_path}</div>
+                                            <td style={{ padding: 16 }}>
+                                                <div style={{ fontWeight: 600, color: '#0f172a' }}>{finding.asset_name}</div>
+                                                <div style={{ fontSize: 13, color: '#64748b' }}>{finding.asset_path}</div>
                                             </td>
-                                            <td>
+                                            <td style={{ padding: 16 }}>
                                                 <div style={{ fontSize: 13 }}>{finding.environment}</div>
-                                                <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{finding.source_system}</div>
+                                                <div style={{ fontSize: 12, color: '#64748b' }}>{finding.source_system}</div>
                                             </td>
-                                            <td>{finding.pattern_name}</td>
-                                            <td>
-                                                <div style={{ fontSize: 12, fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {finding.matches.length > 0 ? finding.matches[0] : 'No match data'}
-                                                    {finding.matches.length > 1 && <span style={{ color: 'var(--color-primary)' }}> (+{finding.matches.length - 1})</span>}
+                                            <td style={{ padding: 16, fontFamily: 'monospace', fontSize: 13 }}>{finding.pattern_name}</td>
+                                            <td style={{ padding: 16 }}>
+                                                <div style={{ fontSize: 12, fontFamily: 'monospace', color: '#64748b', maxHeight: '100px', overflowY: 'auto' }}>
+                                                    {finding.matches.map((match, idx) => (
+                                                        <div key={idx} style={{ marginBottom: 2 }}>{match}</div>
+                                                    ))}
                                                 </div>
                                             </td>
-                                            <td>
-                                                <span className={`badge ${getSeverityBadgeClass(finding.severity)}`}>
+                                            <td style={{ padding: 16 }}>
+                                                <span className={`badge ${getSeverityBadgeClass(finding.severity)}`} style={{ borderRadius: 4, fontWeight: 600 }}>
                                                     {finding.severity}
                                                 </span>
                                             </td>
-                                            <td>
+                                            <td style={{ padding: 16 }}>
                                                 {finding.classifications.map((c, i) => (
-                                                    <span key={i} className={`tag ${getClassificationTag(c.classification_type)}`}>
+                                                    <span key={i} className={`tag ${getClassificationTag(c.classification_type)}`} style={{ borderRadius: 4 }}>
                                                         {c.classification_type}
                                                     </span>
                                                 ))}
                                             </td>
-                                            <td>
+                                            <td style={{ padding: 16 }}>
                                                 {classification && (
-                                                    <div>
-                                                        <div style={{ fontWeight: 600, fontSize: 14 }}>
-                                                            {classification.confidence_score.toFixed(2)}
-                                                        </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                        <span style={{ fontWeight: 600, fontSize: 13 }}>
+                                                            {(classification.confidence_score * 100).toFixed(0)}%
+                                                        </span>
                                                         {getConfidenceLevelBadge(classification.confidence_level)}
                                                     </div>
                                                 )}
@@ -357,23 +386,23 @@ export default function FindingsTable({
             </div>
 
             {totalPages > 1 && (
-                <div className="pagination">
+                <div className="pagination" style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     <button
                         className="pagination-button"
                         onClick={() => onPageChange(page - 1)}
                         disabled={page <= 1}
+                        style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '6px 12px' }}
                     >
                         Previous
                     </button>
-
-                    <span style={{ fontSize: 14, color: '#666' }}>
+                    <span style={{ fontSize: 14, color: '#64748b', alignSelf: 'center' }}>
                         Page {page} of {totalPages}
                     </span>
-
                     <button
                         className="pagination-button"
                         onClick={() => onPageChange(page + 1)}
                         disabled={page >= totalPages}
+                        style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '6px 12px' }}
                     >
                         Next
                     </button>

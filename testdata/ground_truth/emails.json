@@ -1,0 +1,62 @@
+[
+    {
+        "value": "john.doe@example.com",
+        "expected_type": "EMAIL_ADDRESS",
+        "should_detect": true,
+        "description": "Valid email address"
+    },
+    {
+        "value": "alice.smith@company.org",
+        "expected_type": "EMAIL_ADDRESS",
+        "should_detect": true,
+        "description": "Valid email with org TLD"
+    },
+    {
+        "value": "admin@localhost.dev",
+        "expected_type": "EMAIL_ADDRESS",
+        "should_detect": true,
+        "description": "Valid email with dev TLD"
+    },
+    {
+        "value": "user+tag@example.co.uk",
+        "expected_type": "EMAIL_ADDRESS",
+        "should_detect": true,
+        "description": "Valid email with plus addressing and country TLD"
+    },
+    {
+        "value": "test_user@mail-server.io",
+        "expected_type": "EMAIL_ADDRESS",
+        "should_detect": true,
+        "description": "Valid email with underscore and hyphen"
+    },
+    {
+        "value": "user@domain",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid email - missing TLD"
+    },
+    {
+        "value": "invalidemail.com",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid email - missing @ symbol"
+    },
+    {
+        "value": "@example.com",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid email - missing local part"
+    },
+    {
+        "value": "user@",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid email - missing domain"
+    },
+    {
+        "value": "user name@example.com",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid email - space in local part"
+    }
+]

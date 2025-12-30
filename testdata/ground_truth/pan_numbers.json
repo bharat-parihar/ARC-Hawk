@@ -1,0 +1,62 @@
+[
+    {
+        "value": "ABCDE1234F",
+        "expected_type": "IN_PAN",
+        "should_detect": true,
+        "description": "Valid PAN format AAAAA9999A"
+    },
+    {
+        "value": "BNZAA2318J",
+        "expected_type": "IN_PAN",
+        "should_detect": true,
+        "description": "Valid PAN format"
+    },
+    {
+        "value": "AFZPK7190K",
+        "expected_type": "IN_PAN",
+        "should_detect": true,
+        "description": "Valid PAN format"
+    },
+    {
+        "value": "CQHPS4560M",
+        "expected_type": "IN_PAN",
+        "should_detect": true,
+        "description": "Valid PAN format"
+    },
+    {
+        "value": "ABCDE123F",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid PAN - wrong length (9 chars)"
+    },
+    {
+        "value": "12345ABCDE",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid PAN - numbers first"
+    },
+    {
+        "value": "ABCDE12345",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid PAN - 5 digits instead of 4"
+    },
+    {
+        "value": "abcde1234f",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid PAN - lowercase letters"
+    },
+    {
+        "value": "ABCD12345E",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid PAN - only 4 letters at start"
+    },
+    {
+        "value": "ABCDE1234",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid PAN - missing last letter"
+    }
+]

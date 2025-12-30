@@ -129,6 +129,18 @@ export default function Sidebar({ children }: SidebarProps) {
                         href="/lineage"
                         collapsed={collapsed}
                     />
+                    <NavSection
+                        icon="🔍"
+                        label="Findings"
+                        href="/findings"
+                        collapsed={collapsed}
+                    />
+                    <NavSection
+                        icon="🛡️"
+                        label="Posture"
+                        href="/posture"
+                        collapsed={collapsed}
+                    />
                 </div>
 
                 <div style={{

@@ -2,17 +2,18 @@
 
 import React, { useEffect, useState } from 'react';
 import Topbar from '@/components/Topbar';
-import AssetInventoryList from '@/modules/assets/AssetInventoryList';
-import AssetDetailPanel from '@/modules/assets/AssetDetailPanel';
+import AssetTable from '@/components/AssetTable';
 import LoadingState from '@/components/LoadingState';
-import { lineageApi } from '@/services/lineage.api';
+import { assetsApi } from '@/services/assets.api';
 import { colors } from '@/design-system/colors';
-import { Node } from '@/types';
+import { Asset } from '@/types';
+import { useRouter } from 'next/navigation';
 
 export default function AssetInventoryPage() {
-    const [assets, setAssets] = useState<Node[]>([]);
+    const router = useRouter();
+    const [assets, setAssets] = useState<Asset[]>([]);
+    const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchAssets();
@@ -21,10 +22,9 @@ export default function AssetInventoryPage() {
     const fetchAssets = async () => {
         try {
             setLoading(true);
-            // We fetch the semantic graph to get all nodes, then filter for assets
-            const graphData = await lineageApi.getSemanticGraph({});
-            const assetNodes = graphData.nodes.filter((n: any) => n.type === 'asset' || n.type === 'system');
-            setAssets(assetNodes);
+            const response = await assetsApi.getAssets({ page: 1, page_size: 50 });
+            setAssets(response.assets);
+            setTotal(response.total);
         } catch (error) {
             console.error('Failed to fetch assets:', error);
         } finally {
@@ -33,20 +33,14 @@ export default function AssetInventoryPage() {
     };
 
     const handleAssetClick = (assetId: string) => {
-        setSelectedAssetId(assetId);
-    };
-
-    const handleViewLineage = (assetId: string) => {
-        window.location.href = `/lineage?assetId=${assetId}`;
+        router.push(`/assets/${assetId}`);
     };
 
     return (
-        <div style={{ padding: '24px', minHeight: '100vh', backgroundColor: colors.background.primary }}>
+        <div style={{ minHeight: '100vh', backgroundColor: colors.background.primary }}>
             <Topbar
-                scanTime={new Date().toISOString()}
+                scanTime={new Date().toISOString()} // Todo: fetch real scan time
                 environment="Production"
-                riskScore={0} // Placeholder or calculate
-                onSearch={() => { }}
             />
 
             <div style={{ padding: '32px', maxWidth: '1600px', margin: '0 auto' }}>
@@ -60,27 +54,27 @@ export default function AssetInventoryPage() {
                     }}>
                         Asset Inventory
                     </h1>
-                    <p style={{ color: colors.text.secondary, fontSize: '16px' }}>
-                        Comprehensive list of all systems and data assets tracked by ARC-Hawk.
-                    </p>
+                    <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
+                            Total: {total}
+                        </span>
+                        <span className="text-slate-500 text-sm">
+                            Canonical source of truth for all tracked data assets.
+                        </span>
+                    </div>
                 </div>
 
                 {loading ? (
-                    <LoadingState message="Loading assets..." />
+                    <LoadingState message="Syncing Asset Inventory..." />
                 ) : (
-                    <AssetInventoryList
+                    <AssetTable
                         assets={assets}
+                        total={total}
+                        loading={loading}
                         onAssetClick={handleAssetClick}
                     />
                 )}
             </div>
-
-            <AssetDetailPanel
-                asset={assets.find(a => a.id === selectedAssetId) || null}
-                isOpen={!!selectedAssetId}
-                onClose={() => setSelectedAssetId(null)}
-                onViewLineage={handleViewLineage}
-            />
         </div>
     );
 }

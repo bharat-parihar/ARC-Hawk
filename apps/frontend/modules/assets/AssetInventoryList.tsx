@@ -102,8 +102,8 @@ export default function AssetList({ assets, onAssetClick }: AssetListProps) {
                                 <span style={{
                                     padding: '4px 8px',
                                     borderRadius: theme.borderRadius.sm,
-                                    backgroundColor: colors.semantic.node.asset.bg,
-                                    color: colors.semantic.node.asset.text,
+                                    backgroundColor: colors.background.muted,
+                                    color: colors.nodeColors.asset,
                                     fontSize: theme.fontSize.xs,
                                     fontWeight: theme.fontWeight.bold,
                                     textTransform: 'uppercase',

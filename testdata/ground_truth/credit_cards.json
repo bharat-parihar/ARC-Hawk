@@ -1,0 +1,62 @@
+[
+    {
+        "value": "4532015112830366",
+        "expected_type": "CREDIT_CARD",
+        "should_detect": true,
+        "description": "Valid Visa card with Luhn checksum"
+    },
+    {
+        "value": "5425233430109903",
+        "expected_type": "CREDIT_CARD",
+        "should_detect": true,
+        "description": "Valid Mastercard with Luhn checksum"
+    },
+    {
+        "value": "378282246310005",
+        "expected_type": "CREDIT_CARD",
+        "should_detect": true,
+        "description": "Valid American Express with Luhn checksum"
+    },
+    {
+        "value": "6011111111111117",
+        "expected_type": "CREDIT_CARD",
+        "should_detect": true,
+        "description": "Valid Discover card with Luhn checksum"
+    },
+    {
+        "value": "3530111333300000",
+        "expected_type": "CREDIT_CARD",
+        "should_detect": true,
+        "description": "Valid JCB card with Luhn checksum"
+    },
+    {
+        "value": "4532015112830367",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Failed Luhn checksum - last digit wrong"
+    },
+    {
+        "value": "1234567890123456",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Random 16-digit number failing Luhn"
+    },
+    {
+        "value": "5555555555554444",
+        "expected_type": "CREDIT_CARD",
+        "should_detect": true,
+        "description": "Valid Mastercard test number"
+    },
+    {
+        "value": "4111111111111111",
+        "expected_type": "CREDIT_CARD",
+        "should_detect": true,
+        "description": "Valid Visa test number"
+    },
+    {
+        "value": "123456789012",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "12 digits but fails Luhn"
+    }
+]

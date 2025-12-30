@@ -1,0 +1,380 @@
+[
+  {
+    "value": "4532015112830366",
+    "expected_type": "CREDIT_CARD",
+    "should_detect": true,
+    "description": "Valid Visa card with Luhn checksum"
+  },
+  {
+    "value": "5425233430109903",
+    "expected_type": "CREDIT_CARD",
+    "should_detect": true,
+    "description": "Valid Mastercard with Luhn checksum"
+  },
+  {
+    "value": "378282246310005",
+    "expected_type": "CREDIT_CARD",
+    "should_detect": true,
+    "description": "Valid American Express with Luhn checksum"
+  },
+  {
+    "value": "6011111111111117",
+    "expected_type": "CREDIT_CARD",
+    "should_detect": true,
+    "description": "Valid Discover card with Luhn checksum"
+  },
+  {
+    "value": "3530111333300000",
+    "expected_type": "CREDIT_CARD",
+    "should_detect": true,
+    "description": "Valid JCB card with Luhn checksum"
+  },
+  {
+    "value": "4532015112830367",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Failed Luhn checksum - last digit wrong"
+  },
+  {
+    "value": "1234567890123456",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Random 16-digit number failing Luhn"
+  },
+  {
+    "value": "5555555555554444",
+    "expected_type": "CREDIT_CARD",
+    "should_detect": true,
+    "description": "Valid Mastercard test number"
+  },
+  {
+    "value": "4111111111111111",
+    "expected_type": "CREDIT_CARD",
+    "should_detect": true,
+    "description": "Valid Visa test number"
+  },
+  {
+    "value": "123456789012",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "12 digits but fails Luhn"
+  },
+  {
+    "value": "john.doe@example.com",
+    "expected_type": "EMAIL_ADDRESS",
+    "should_detect": true,
+    "description": "Valid email address"
+  },
+  {
+    "value": "alice.smith@company.org",
+    "expected_type": "EMAIL_ADDRESS",
+    "should_detect": true,
+    "description": "Valid email with org TLD"
+  },
+  {
+    "value": "admin@localhost.dev",
+    "expected_type": "EMAIL_ADDRESS",
+    "should_detect": true,
+    "description": "Valid email with dev TLD"
+  },
+  {
+    "value": "user+tag@example.co.uk",
+    "expected_type": "EMAIL_ADDRESS",
+    "should_detect": true,
+    "description": "Valid email with plus addressing and country TLD"
+  },
+  {
+    "value": "test_user@mail-server.io",
+    "expected_type": "EMAIL_ADDRESS",
+    "should_detect": true,
+    "description": "Valid email with underscore and hyphen"
+  },
+  {
+    "value": "user@domain",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid email - missing TLD"
+  },
+  {
+    "value": "invalidemail.com",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid email - missing @ symbol"
+  },
+  {
+    "value": "@example.com",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid email - missing local part"
+  },
+  {
+    "value": "user@",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid email - missing domain"
+  },
+  {
+    "value": "user name@example.com",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid email - space in local part"
+  },
+  {
+    "value": "ABCDE1234F",
+    "expected_type": "IN_PAN",
+    "should_detect": true,
+    "description": "Valid PAN format AAAAA9999A"
+  },
+  {
+    "value": "BNZAA2318J",
+    "expected_type": "IN_PAN",
+    "should_detect": true,
+    "description": "Valid PAN format"
+  },
+  {
+    "value": "AFZPK7190K",
+    "expected_type": "IN_PAN",
+    "should_detect": true,
+    "description": "Valid PAN format"
+  },
+  {
+    "value": "CQHPS4560M",
+    "expected_type": "IN_PAN",
+    "should_detect": true,
+    "description": "Valid PAN format"
+  },
+  {
+    "value": "ABCDE123F",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid PAN - wrong length (9 chars)"
+  },
+  {
+    "value": "12345ABCDE",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid PAN - numbers first"
+  },
+  {
+    "value": "ABCDE12345",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid PAN - 5 digits instead of 4"
+  },
+  {
+    "value": "abcde1234f",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid PAN - lowercase letters"
+  },
+  {
+    "value": "ABCD12345E",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid PAN - only 4 letters at start"
+  },
+  {
+    "value": "ABCDE1234",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid PAN - missing last letter"
+  },
+  {
+    "value": "123456789",
+    "expected_type": "US_SSN",
+    "should_detect": true,
+    "description": "Valid SSN format"
+  },
+  {
+    "value": "234567890",
+    "expected_type": "US_SSN",
+    "should_detect": true,
+    "description": "Valid SSN format"
+  },
+  {
+    "value": "345678901",
+    "expected_type": "US_SSN",
+    "should_detect": true,
+    "description": "Valid SSN format"
+  },
+  {
+    "value": "000123456",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid SSN - area 000 forbidden"
+  },
+  {
+    "value": "666123456",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid SSN - area 666 reserved"
+  },
+  {
+    "value": "123000456",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid SSN - group 00 forbidden"
+  },
+  {
+    "value": "123450000",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid SSN - serial 0000 forbidden"
+  },
+  {
+    "value": "000000000",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid SSN - blacklisted all zeros"
+  },
+  {
+    "value": "111111111",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid SSN - blacklisted repeated digits"
+  },
+  {
+    "value": "12345678",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid SSN - only 8 digits"
+  },
+  {
+    "value": "234123456789",
+    "expected_type": "IN_AADHAAR",
+    "should_detect": true,
+    "description": "Valid 12-digit Aadhaar (simplified Verhoeff check)"
+  },
+  {
+    "value": "123412345670",
+    "expected_type": "IN_AADHAAR",
+    "should_detect": true,
+    "description": "Valid 12-digit Aadhaar"
+  },
+  {
+    "value": "987654321098",
+    "expected_type": "IN_AADHAAR",
+    "should_detect": true,
+    "description": "Valid 12-digit Aadhaar"
+  },
+  {
+    "value": "12341234567",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid Aadhaar - only 11 digits"
+  },
+  {
+    "value": "1234123456789",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid Aadhaar - 13 digits"
+  },
+  {
+    "value": "ABCD12345678",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid Aadhaar - contains letters"
+  },
+  {
+    "value": "000000000000",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid Aadhaar - all zeros"
+  },
+  {
+    "value": "111111111111",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Invalid Aadhaar - repeated digits"
+  },
+  {
+    "value": "192.168.1.1",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "IP address - not PII"
+  },
+  {
+    "value": "10.0.0.1",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Private IP address - not PII"
+  },
+  {
+    "value": "DB_PORT=5432",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Configuration value - not PII"
+  },
+  {
+    "value": "ORD-123456789",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Order ID - not PII"
+  },
+  {
+    "value": "550e8400-e29b-41d4-a716-446655440000",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "UUID - not PII"
+  },
+  {
+    "value": "2024-01-15T10:30:00Z",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "ISO timestamp - not PII"
+  },
+  {
+    "value": "en-US",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Locale code - not PII"
+  },
+  {
+    "value": "USD",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Currency code - not PII"
+  },
+  {
+    "value": "HTTP/1.1 200 OK",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "HTTP response - not PII"
+  },
+  {
+    "value": "/api/v1/users",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "API endpoint - not PII"
+  },
+  {
+    "value": "sha256:abc123def456",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Hash digest - not PII"
+  },
+  {
+    "value": "localhost:3000",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Host:port - not PII"
+  },
+  {
+    "value": "application/json",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "MIME type - not PII"
+  },
+  {
+    "value": "Bearer token",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Auth header prefix - not PII"
+  },
+  {
+    "value": "v1.2.3",
+    "expected_type": "NON_PII",
+    "should_detect": false,
+    "description": "Version number - not PII"
+  }
+]

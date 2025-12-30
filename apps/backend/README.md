@@ -10,8 +10,15 @@ The backend follows Clean Architecture with clear separation of concerns:
 - **`internal/api/`** - HTTP handlers and routing (Gin framework)
 - **`internal/service/`** - Business logic layer
 - **`internal/domain/`** - Domain models and interfaces
-- **`internal/infrastructure/`** - External dependencies (database, persistence)
-- **`pkg/`** - Reusable packages (if any)
+- **`internal/infrastructure/`** - External dependencies (PostgreSQL, Neo4j, Presidio)
+- **`pkg/`** - Reusable packages (Logger, Validator)
+
+## Key Integrations
+
+- **PostgreSQL**: Primary data store for scans, assets, and findings.
+- **Neo4j**: Graph database for semantic lineage and relationship traversal.
+- **Presidio**: PII classification engine (gRPC integration).
+
 
 ## Prerequisites
 

@@ -21,6 +21,7 @@ func NewClassificationSummaryService(repo *persistence.PostgresRepository) *Clas
 type ClassificationSummary struct {
 	Total              int                      `json:"total"`
 	ByType             map[string]TypeBreakdown `json:"by_type"`
+	BySeverity         map[string]int           `json:"by_severity"`
 	HighConfidence     int                      `json:"high_confidence_count"`
 	RequiringConsent   int                      `json:"requiring_consent_count"`
 	VerifiedCount      int                      `json:"verified_count"`
@@ -83,6 +84,12 @@ func (s *ClassificationSummaryService) GetClassificationSummary(ctx context.Cont
 		}
 	}
 
+	// Parse severity breakdown
+	bySeverity := make(map[string]int)
+	if val, ok := rawSummary["by_severity"].(map[string]int); ok {
+		bySeverity = val
+	}
+
 	// Parse optional counts (default to 0 if missing)
 	verifiedCount := 0
 	if val, ok := rawSummary["verified_count"].(int); ok {
@@ -97,6 +104,7 @@ func (s *ClassificationSummaryService) GetClassificationSummary(ctx context.Cont
 	return &ClassificationSummary{
 		Total:              total,
 		ByType:             byType,
+		BySeverity:         bySeverity,
 		HighConfidence:     highConfidence,
 		RequiringConsent:   requiringConsent,
 		VerifiedCount:      verifiedCount,

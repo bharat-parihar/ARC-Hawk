@@ -73,8 +73,9 @@ export default function AssetDetailPanel({
                             marginBottom: '8px',
                         }}>
                             <span style={{
-                                backgroundColor: colors.semantic.node.asset.bg,
-                                color: colors.semantic.node.asset.text,
+                                backgroundColor: colors.background.muted,
+                                border: `1px solid ${colors.nodeColors.asset}`,
+                                color: colors.nodeColors.asset,
                                 padding: '4px 8px',
                                 borderRadius: theme.borderRadius.sm,
                                 fontSize: theme.fontSize.xs,
@@ -162,9 +163,9 @@ export default function AssetDetailPanel({
                                 <span key={tag} style={{
                                     padding: '6px 12px',
                                     borderRadius: theme.borderRadius.full,
-                                    backgroundColor: colors.semantic.node.pii.bg,
-                                    color: colors.semantic.node.pii.text,
-                                    border: `1px solid ${colors.semantic.node.pii.border}`,
+                                    backgroundColor: colors.background.muted,
+                                    color: colors.nodeColors.pii,
+                                    border: `1px solid ${colors.nodeColors.pii}`,
                                     fontSize: theme.fontSize.sm,
                                     fontWeight: theme.fontWeight.medium,
                                 }}>

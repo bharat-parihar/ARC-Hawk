@@ -164,9 +164,10 @@ func (s *FindingsService) SubmitFeedback(ctx context.Context, feedback *entity.F
 	// 4. IMMEDIATE ACTION: Update Review State based on feedback
 	// If User says "False Positive", we should mark it as such.
 	reviewStatus := "pending"
-	if feedback.FeedbackType == entity.FeedbackTypeFalsePositive {
+	switch feedback.FeedbackType {
+	case entity.FeedbackTypeFalsePositive:
 		reviewStatus = "false_positive"
-	} else if feedback.FeedbackType == entity.FeedbackTypeConfirmed {
+	case entity.FeedbackTypeConfirmed:
 		reviewStatus = "confirmed"
 	}
 

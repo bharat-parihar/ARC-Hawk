@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { api } from '@/utils/api';
+import { assetsApi } from '@/services/assets.api';
 
 interface AssetDetailsPanelProps {
     assetId: string;
@@ -16,7 +16,7 @@ export default function AssetDetailsPanel({ assetId, onClose }: AssetDetailsPane
         const fetchAsset = async () => {
             setLoading(true);
             try {
-                const data = await api.getAsset(assetId);
+                const data = await assetsApi.getAsset(assetId);
                 setAsset(data);
             } catch (err) {
                 console.error(err);

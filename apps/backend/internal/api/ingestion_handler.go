@@ -62,6 +62,28 @@ func (h *IngestionHandler) GetScanStatus(c *gin.Context) {
 	})
 }
 
+// GetLatestScan handles GET /api/v1/scans/latest
+func (h *IngestionHandler) GetLatestScan(c *gin.Context) {
+	scanRun, err := h.service.GetLatestScan(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch latest scan",
+		})
+		return
+	}
+
+	if scanRun == nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"message": "No scans found",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": scanRun,
+	})
+}
+
 // Ensure handler can marshal to JSON
 func (h *IngestionHandler) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct{}{})

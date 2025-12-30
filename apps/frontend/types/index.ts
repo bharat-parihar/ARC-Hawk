@@ -130,6 +130,7 @@ export interface TypeBreakdown {
 export interface ClassificationSummary {
     total: number;
     by_type: Record<string, TypeBreakdown>;
+    by_severity?: Record<string, number>;
     high_confidence_count: number;
     requiring_consent_count: number;
     verified_count: number;

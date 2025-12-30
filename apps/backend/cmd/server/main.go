@@ -16,6 +16,9 @@ import (
 	"github.com/arc-platform/backend/internal/infrastructure/persistence"
 	"github.com/arc-platform/backend/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/joho/godotenv"
 )
 
@@ -48,9 +51,31 @@ func main() {
 	// Initialize repository
 	repo := persistence.NewPostgresRepository(db)
 
-	// Run database migrations
-	if err := repo.MigrateSchema(context.Background()); err != nil {
-		log.Fatalf("Failed to migrate schema: %v", err)
+	// Run database migrations using golang-migrate
+	migrationURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		os.Getenv("DATABASE_USER"),
+		os.Getenv("DATABASE_PASSWORD"),
+		os.Getenv("DATABASE_HOST"),
+		os.Getenv("DATABASE_PORT"),
+		os.Getenv("DATABASE_NAME"),
+		os.Getenv("DATABASE_SSLMODE"))
+
+	m, err := migrate.New(
+		"file://migrations_versioned",
+		migrationURL)
+	if err != nil {
+		log.Fatalf("Failed to initialize migrations: %v", err)
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	version, dirty, err := m.Version()
+	if err != nil && err != migrate.ErrNilVersion {
+		log.Printf("Warning: Could not get migration version: %v", err)
+	} else if err == nil {
+		log.Printf("✅ Database migrated to version %d (dirty: %v)", version, dirty)
 	}
 
 	// Initialize services
@@ -58,14 +83,27 @@ func main() {
 	classificationService := service.NewClassificationService(repo, cfg)
 	classificationSummaryService := service.NewClassificationSummaryService(repo)
 
-	// Optional: Presidio ML integration
-	presidioEnabled := os.Getenv("PRESIDIO_ENABLED")
+	// MANDATORY: Presidio ML integration (Presidio-first architecture)
 	presidioURL := os.Getenv("PRESIDIO_URL")
-	if presidioEnabled == "true" && presidioURL != "" {
-		log.Printf("Presidio ML enabled at %s", presidioURL)
-	} else {
-		log.Println("Presidio ML disabled (rules-only mode)")
+	if presidioURL == "" {
+		presidioURL = "http://localhost:5001" // Default
 	}
+
+	// Create Presidio client
+	presidioClient := service.NewPresidioClient(presidioURL, true) // always enabled
+
+	// Health check - CRITICAL: Fail fast if Presidio is down
+	healthCtx, healthCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer healthCancel()
+
+	if err := presidioClient.HealthCheck(healthCtx); err != nil {
+		log.Fatalf("❌ CRITICAL: Presidio is MANDATORY but health check failed: %v\nEnsure Presidio is running at %s", err, presidioURL)
+	}
+
+	log.Printf("✅ Presidio connected and healthy at %s", presidioURL)
+
+	// Inject Presidio into classification service
+	classificationService.SetPresidioClient(presidioClient)
 
 	// Neo4j configuration (optional - needed for semantic graph)
 	neo4jEnabled := os.Getenv("NEO4J_ENABLED")

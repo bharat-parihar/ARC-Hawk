@@ -1,0 +1,92 @@
+[
+    {
+        "value": "192.168.1.1",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "IP address - not PII"
+    },
+    {
+        "value": "10.0.0.1",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Private IP address - not PII"
+    },
+    {
+        "value": "DB_PORT=5432",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Configuration value - not PII"
+    },
+    {
+        "value": "ORD-123456789",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Order ID - not PII"
+    },
+    {
+        "value": "550e8400-e29b-41d4-a716-446655440000",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "UUID - not PII"
+    },
+    {
+        "value": "2024-01-15T10:30:00Z",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "ISO timestamp - not PII"
+    },
+    {
+        "value": "en-US",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Locale code - not PII"
+    },
+    {
+        "value": "USD",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Currency code - not PII"
+    },
+    {
+        "value": "HTTP/1.1 200 OK",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "HTTP response - not PII"
+    },
+    {
+        "value": "/api/v1/users",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "API endpoint - not PII"
+    },
+    {
+        "value": "sha256:abc123def456",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Hash digest - not PII"
+    },
+    {
+        "value": "localhost:3000",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Host:port - not PII"
+    },
+    {
+        "value": "application/json",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "MIME type - not PII"
+    },
+    {
+        "value": "Bearer token",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Auth header prefix - not PII"
+    },
+    {
+        "value": "v1.2.3",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Version number - not PII"
+    }
+]

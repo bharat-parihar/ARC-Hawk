@@ -46,7 +46,8 @@ type SemanticGraph struct {
 	Edges []SemanticEdge `json:"edges"`
 }
 
-// SyncAssetToNeo4j syncs an asset and its findings to Neo4j (aggregated)
+// SyncAssetToNeo4j syncs an asset and its findings to Neo4j (3-layer aggregated hierarchy)
+// Creates: System → Asset → DataCategory (NO individual finding nodes for scalability)
 func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID uuid.UUID) error {
 	// Skip if Neo4j is not available
 	if s.neo4jRepo == nil {
@@ -75,9 +76,9 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 		return fmt.Errorf("failed to create asset node: %w", err)
 	}
 
-	// 3. Create HOSTS relationship
+	// 3. Create CONTAINS relationship (System → Asset)
 	if err := s.neo4jRepo.CreateContainsRelationship(ctx, systemID, asset.ID.String()); err != nil {
-		return fmt.Errorf("failed to create hosts relationship: %w", err)
+		return fmt.Errorf("failed to create system-asset relationship: %w", err)
 	}
 
 	// 4. Get findings for this asset
@@ -86,8 +87,7 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 		return fmt.Errorf("failed to get findings: %w", err)
 	}
 
-	// 5. Aggregate findings by classification type
-	// Group: AssetID + ClassificationType → DataCategory node
+	// 5. Aggregate findings by classification type (DataCategory level)
 	categoryMap := make(map[string]*DataCategoryAggregate)
 
 	for _, finding := range findings {
@@ -99,8 +99,9 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 
 		classification := classifications[0]
 
-		// Skip low confidence
-		if classification.ConfidenceScore < 0.45 {
+		// CRITICAL: Filter Non-PII and low-confidence at query time for Neo4j
+		// This ensures clean graph visualization even with store-all approach
+		if classification.ConfidenceScore < 0.45 || classification.ClassificationType == "Non-PII" {
 			continue
 		}
 
@@ -120,7 +121,7 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 		agg.FindingCount++
 		agg.TotalConfidence += classification.ConfidenceScore
 
-		// Aggregate findings by pattern
+		// Track pattern diversity (for metadata only, not creating nodes)
 		findingAgg := FindingAggregate{
 			PatternName: finding.PatternName,
 			Severity:    finding.Severity,
@@ -129,11 +130,23 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 		agg.Findings = append(agg.Findings, findingAgg)
 	}
 
-	// 6. Create DataCategory nodes and relationships
+	// 6. Create DataCategory nodes ONLY (no individual finding nodes)
+	// This keeps the graph clean and scalable
 	for categoryType, agg := range categoryMap {
 		dataCategoryID := fmt.Sprintf("dc-%s-%s", asset.ID.String(), categoryType)
 
 		avgConfidence := agg.TotalConfidence / float64(agg.FindingCount)
+
+		// Aggregate pattern statistics for metadata
+		patternCounts := make(map[string]int)
+		severityCounts := make(map[string]int)
+		for _, findingAgg := range agg.Findings {
+			patternCounts[findingAgg.PatternName] += findingAgg.Count
+			severityCounts[findingAgg.Severity]++
+		}
+
+		// Determine risk level based on classification type and confidence
+		riskLevel := getRiskLevel(categoryType, avgConfidence)
 
 		dataCategoryMetadata := map[string]interface{}{
 			"classification_type": categoryType,
@@ -141,6 +154,10 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 			"requires_consent":    agg.RequiresConsent,
 			"finding_count":       agg.FindingCount,
 			"avg_confidence":      avgConfidence,
+			"risk_level":          riskLevel,
+			"pattern_diversity":   len(patternCounts),
+			"pattern_counts":      patternCounts,
+			"severity_breakdown":  severityCounts,
 		}
 
 		// Create DataCategory node in Neo4j
@@ -148,43 +165,50 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 			return fmt.Errorf("failed to create data category node: %w", err)
 		}
 
-		// Create CONTAINS relationship (Asset → DataCategory)
+		// Create EXPOSES relationship (Asset → DataCategory)
 		if err := s.neo4jRepo.CreateContainsRelationship(ctx, asset.ID.String(), dataCategoryID); err != nil {
-			return fmt.Errorf("failed to create contains relationship: %w", err)
-		}
-
-		// 7. Create aggregated Finding nodes (by pattern)
-		patternMap := make(map[string]*FindingAggregate)
-		for _, findingAgg := range agg.Findings {
-			if existing, exists := patternMap[findingAgg.PatternName]; exists {
-				existing.Count += findingAgg.Count
-			} else {
-				patternMap[findingAgg.PatternName] = &findingAgg
-			}
-		}
-
-		// Create Finding nodes for each pattern
-		for patternName, findingAgg := range patternMap {
-			findingNodeID := fmt.Sprintf("finding-%s-%s-%s", asset.ID.String(), categoryType, patternName)
-
-			findingMetadata := map[string]interface{}{
-				"pattern_name": patternName,
-				"severity":     findingAgg.Severity,
-				"count":        findingAgg.Count,
-			}
-
-			if err := s.neo4jRepo.CreateFindingAggregateNode(ctx, findingNodeID, patternName, findingMetadata); err != nil {
-				return fmt.Errorf("failed to create finding node: %w", err)
-			}
-
-			// Create HAS_FINDING relationship (DataCategory → Finding)
-			if err := s.neo4jRepo.CreateHasFindingRelationship(ctx, dataCategoryID, findingNodeID, findingAgg.Count); err != nil {
-				return fmt.Errorf("failed to create has_finding relationship: %w", err)
-			}
+			return fmt.Errorf("failed to create asset-category relationship: %w", err)
 		}
 	}
 
 	return nil
+}
+
+// getRiskLevel determines risk level based on classification type and confidence
+func getRiskLevel(classificationType string, avgConfidence float64) string {
+	// Base risk by classification type
+	baseRisk := map[string]int{
+		"Sensitive Personal Data": 3, // Critical
+		"Secrets":                 3, // Critical
+		"Personal Data":           2, // High
+		"Financial Data":          3, // Critical
+		"Health Data":             3, // Critical
+		"Biometric Data":          3, // Critical
+	}
+
+	risk, exists := baseRisk[classificationType]
+	if !exists {
+		risk = 1 // Medium for unknown types
+	}
+
+	// Adjust based on confidence
+	if avgConfidence < 0.65 {
+		risk-- // Lower risk if low confidence
+	} else if avgConfidence > 0.85 {
+		risk++ // Higher risk if very confident
+	}
+
+	// Map to risk level strings
+	switch {
+	case risk >= 3:
+		return "Critical"
+	case risk == 2:
+		return "High"
+	case risk == 1:
+		return "Medium"
+	default:
+		return "Low"
+	}
 }
 
 // DataCategoryAggregate represents aggregated findings by classification
@@ -255,7 +279,7 @@ type SemanticGraphFilters struct {
 }
 
 // fallbackToPostgres builds semantic graph from PostgreSQL when Neo4j unavailable
-func (s *SemanticLineageService) fallbackToPostgres(ctx context.Context, filters SemanticGraphFilters) (*SemanticGraph, error) {
+func (s *SemanticLineageService) fallbackToPostgres(ctx context.Context, _ SemanticGraphFilters) (*SemanticGraph, error) {
 	// Get assets from PostgreSQL
 	assets, err := s.pgRepo.ListAssets(ctx, 100, 0)
 	if err != nil {

@@ -1,0 +1,62 @@
+[
+    {
+        "value": "123456789",
+        "expected_type": "US_SSN",
+        "should_detect": true,
+        "description": "Valid SSN format"
+    },
+    {
+        "value": "234567890",
+        "expected_type": "US_SSN",
+        "should_detect": true,
+        "description": "Valid SSN format"
+    },
+    {
+        "value": "345678901",
+        "expected_type": "US_SSN",
+        "should_detect": true,
+        "description": "Valid SSN format"
+    },
+    {
+        "value": "000123456",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid SSN - area 000 forbidden"
+    },
+    {
+        "value": "666123456",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid SSN - area 666 reserved"
+    },
+    {
+        "value": "123000456",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid SSN - group 00 forbidden"
+    },
+    {
+        "value": "123450000",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid SSN - serial 0000 forbidden"
+    },
+    {
+        "value": "000000000",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid SSN - blacklisted all zeros"
+    },
+    {
+        "value": "111111111",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid SSN - blacklisted repeated digits"
+    },
+    {
+        "value": "12345678",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid SSN - only 8 digits"
+    }
+]

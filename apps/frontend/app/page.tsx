@@ -6,8 +6,11 @@ import SummaryCards from '@/components/SummaryCards';
 import HighRiskAssetsList from '@/components/dashboard/HighRiskAssetsList';
 import FindingsTable from '@/components/FindingsTable';
 import LoadingState from '@/components/LoadingState';
-import { api } from '@/utils/api';
+import { assetsApi } from '@/services/assets.api';
+import { findingsApi } from '@/services/findings.api';
 import { lineageApi } from '@/services/lineage.api';
+import { classificationApi } from '@/services/classification.api';
+import { scansApi } from '@/services/scans.api';
 import type {
     ClassificationSummary,
     FindingsResponse,
@@ -21,25 +24,38 @@ export default function DashboardPage() {
     const [classificationSummary, setClassificationSummary] = useState<ClassificationSummary | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [scanTime, setScanTime] = useState<string | undefined>(undefined);
+
+    // Filters and pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize] = useState(10);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [severityFilter, setSeverityFilter] = useState('');
 
     useEffect(() => {
         fetchData();
-        fetchFindings();
     }, []);
+
+    useEffect(() => {
+        fetchFindings();
+    }, [currentPage, searchQuery, severityFilter]);
 
     const fetchData = async () => {
         try {
             setLoading(true);
             setError(null);
 
-            const [classification, graphData] = await Promise.all([
-                api.getClassificationSummary(),
-                // We still need basic asset data for stats, even if we don't render the big graph
-                lineageApi.getSemanticGraph({})
+            const [classification, graphData, lastScan] = await Promise.all([
+                classificationApi.getSummary(),
+                lineageApi.getSemanticGraph({}),
+                scansApi.getLastScanRun()
             ]);
 
             setLineageData(graphData);
             setClassificationSummary(classification);
+            if (lastScan) {
+                setScanTime(lastScan.scan_completed_at);
+            }
         } catch (err: any) {
             console.error('Error fetching data:', err);
             setError(err.message || 'Failed to fetch dashboard data.');
@@ -50,20 +66,52 @@ export default function DashboardPage() {
 
     const fetchFindings = async () => {
         try {
-            const findings = await api.getFindings({
-                page: 1,
-                page_size: 10, // Limit to 10 for overview
+            const params: any = {
+                page: currentPage,
+                page_size: pageSize,
+            };
+
+            if (severityFilter) {
+                params.severity = severityFilter;
+            }
+
+            // Note: Backend doesn't support search yet, but prepared for future
+            const findings = await findingsApi.getFindings(params);
+            setFindingsData({
+                ...findings,
+                page: currentPage,
+                page_size: pageSize,
+                total_pages: Math.ceil(findings.total / pageSize)
             });
-            setFindingsData(findings);
         } catch (err: any) {
             console.error('Error fetching findings:', err);
         }
     };
 
+    const handleSearch = (query: string) => {
+        setSearchQuery(query);
+        setCurrentPage(1); // Reset to first page on new search
+    };
+
+    const handlePageChange = (newPage: number) => {
+        setCurrentPage(newPage);
+    };
+
+    const handleFilterChange = (filters: { severity?: string; search?: string }) => {
+        if (filters.severity !== undefined) {
+            setSeverityFilter(filters.severity);
+        }
+        if (filters.search !== undefined) {
+            setSearchQuery(filters.search);
+        }
+        setCurrentPage(1); // Reset to first page on filter change
+    };
+
     // Calculate metrics
-    const totalFindings = findingsData?.total || 0;
+    const totalFindings = classificationSummary?.total || findingsData?.total || 0;
     const sensitivePIICount = classificationSummary?.by_type?.['Sensitive Personal Data']?.count || 0;
-    const criticalFindings = findingsData?.findings.filter(f => f.severity === 'Critical').length || 0;
+    // accurate count from backend aggregation (summing Critical and Highest)
+    const criticalFindings = (classificationSummary?.by_severity?.['Critical'] || 0) + (classificationSummary?.by_severity?.['Highest'] || 0);
 
     // Calculate high-risk assets
     const highRiskAssets = lineageData?.nodes.filter(n => n.risk_score >= 70).length || 0;
@@ -80,10 +128,10 @@ export default function DashboardPage() {
     return (
         <div style={{ padding: '24px', minHeight: '100vh', backgroundColor: colors.background.primary }}>
             <Topbar
-                scanTime={new Date().toISOString()}
+                scanTime={scanTime}
                 environment="Production"
                 riskScore={avgRiskScore}
-                onSearch={() => { }} // Search to be connected later
+                onSearch={handleSearch}
             />
 
             <div style={{ padding: '32px', maxWidth: '1600px', margin: '0 auto' }}>
@@ -97,8 +145,24 @@ export default function DashboardPage() {
                     }}>
                         Risk Overview
                     </h1>
-                    <p style={{ color: colors.text.secondary, fontSize: '16px' }}>
-                        Executive summary of data privacy and security posture.
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <p style={{ color: colors.text.secondary, fontSize: '16px', margin: 0 }}>
+                            Executive summary of data privacy and security posture.
+                        </p>
+                        <span style={{
+                            fontSize: '12px',
+                            color: colors.text.secondary,
+                            background: colors.background.surface,
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            border: `1px solid ${colors.border.default}`
+                        }}>
+                            Live Data
+                        </span>
+                    </div>
+                    <p style={{ color: colors.text.secondary, fontSize: '16px', maxWidth: '800px' }}>
+                        Your environment has <strong>{criticalFindings} critical issues</strong> that require immediate attention.
+                        We analyzed <strong>{totalFindings} detections</strong> spanning <strong>{sensitivePIICount} confirmed sensitive items</strong>.
                     </p>
                 </div>
 
@@ -132,11 +196,11 @@ export default function DashboardPage() {
                             <FindingsTable
                                 findings={findingsData.findings}
                                 total={findingsData.total}
-                                page={1}
-                                pageSize={10}
-                                totalPages={1}
-                                onPageChange={() => { }}
-                                onFilterChange={() => { }}
+                                page={currentPage}
+                                pageSize={pageSize}
+                                totalPages={findingsData.total_pages}
+                                onPageChange={handlePageChange}
+                                onFilterChange={handleFilterChange}
                             />
                         ) : (
                             <LoadingState message="Loading findings..." />

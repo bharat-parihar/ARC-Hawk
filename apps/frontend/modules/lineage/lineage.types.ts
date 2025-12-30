@@ -91,11 +91,11 @@ export interface LayoutConfig {
 // STRICT: Horizontal hierarchy to prevent vertical stacking
 export const DEFAULT_LAYOUT_CONFIG: LayoutConfig = {
     rankdir: 'LR',      // Left-to-Right (horizontal flow)
-    nodesep: 200,       // Increased vertical spacing to prevent overlap
-    ranksep: 250,       // Increased horizontal spacing for clearer flow
-    edgesep: 80,        // Increased edge separation
-    marginx: 100,       // Canvas margin horizontal
-    marginy: 100,       // Canvas margin vertical
+    nodesep: 80,        // Reduced vertical spacing (was 200) for compactness
+    ranksep: 180,       // Reduced horizontal spacing (was 250)
+    edgesep: 50,        // Reduced edge separation
+    marginx: 50,       // Canvas margin horizontal
+    marginy: 50,       // Canvas margin vertical
 };
 
 // ============================================

@@ -36,8 +36,12 @@ def parse_args(args=None):
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     parser.add_argument('--no-write', action='store_true', help='Do not write previous alerts to file, this may flood you with duplicate alerts')
     parser.add_argument('--shutup', action='store_true', help='Suppress the Hawk Eye banner 🫣', default=False)
-    parser.add_argument('--version', action='version', version='%(prog)s v' + version) 
+    parser.add_argument('--version', action='version', version='%(prog)s v' + version)
     parser.add_argument('--hawk-thuu', action='store_true', help="Delete all spitted files during testing phase forcefully")
+    # NEW: Auto-ingestion support
+    parser.add_argument('--ingest-url', type=str, help='Automatically POST scan results to backend API (e.g., http://localhost:8080/api/v1/ingest)')
+    parser.add_argument('--ingest-retry', type=int, default=3, help='Number of retries for ingestion (default: 3)')
+    parser.add_argument('--ingest-timeout', type=int, default=30, help='Timeout for ingestion request in seconds (default: 30)')
     return parser.parse_args(args)
     
 console = Console()

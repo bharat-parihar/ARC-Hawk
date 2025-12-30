@@ -7,8 +7,9 @@ import FindingsTable from '@/components/FindingsTable';
 import InfoPanel from '@/components/InfoPanel';
 import LineageCanvas from '@/modules/lineage/LineageCanvas';
 import LoadingState from '@/components/LoadingState';
-import { api } from '@/utils/api';
 import { lineageApi } from '@/services/lineage.api';
+import { findingsApi } from '@/services/findings.api';
+import { classificationApi } from '@/services/classification.api';
 import type {
     ClassificationSummary,
     FindingsResponse,
@@ -52,7 +53,7 @@ export default function DashboardPage() {
             setError(null);
 
             const dataPromises: Promise<any>[] = [
-                api.getClassificationSummary(),
+                classificationApi.getSummary(),
             ];
 
             // Fetch appropriate graph based on mode
@@ -76,12 +77,18 @@ export default function DashboardPage() {
 
     const fetchFindings = async () => {
         try {
-            const findings = await api.getFindings({
+            const findings = await findingsApi.getFindings({
                 page: 1,
                 page_size: 20,
             });
 
-            setFindingsData(findings);
+            setFindingsData({
+                findings: findings.findings,
+                total: findings.total,
+                page: 1,
+                page_size: 20,
+                total_pages: Math.ceil(findings.total / 20)
+            });
         } catch (err: any) {
             console.error('Error fetching findings:', err);
         }
@@ -254,35 +261,11 @@ export default function DashboardPage() {
                     )}
                 </div>
 
-                {/* Findings Table Section */}
-                <div style={{ marginTop: '32px' }}>
-                    <div style={{ marginBottom: '24px' }}>
-                        <h2
-                            style={{
-                                fontSize: '24px',
-                                fontWeight: 800,
-                                color: colors.text.primary,
-                                margin: 0,
-                                letterSpacing: '-0.02em',
-                            }}
-                        >
-                            Detailed Findings
-                        </h2>
-                    </div>
-
-                    {findingsData ? (
-                        <FindingsTable
-                            findings={findingsData.findings}
-                            total={findingsData.total}
-                            page={1}
-                            pageSize={20}
-                            totalPages={Math.ceil(findingsData.total / 20)}
-                            onPageChange={() => { }}
-                            onFilterChange={() => { }}
-                        />
-                    ) : (
-                        <LoadingState message="Loading findings..." />
-                    )}
+                {/* Findings Table moved to /findings page */}
+                <div style={{ marginTop: '24px', textAlign: 'center' }}>
+                    <a href="/findings" className="text-blue-600 hover:underline text-sm font-medium">
+                        View Detailed Findings &rarr;
+                    </a>
                 </div>
 
                 {/* InfoPanel */}

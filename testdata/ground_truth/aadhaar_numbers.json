@@ -1,0 +1,50 @@
+[
+    {
+        "value": "234123456789",
+        "expected_type": "IN_AADHAAR",
+        "should_detect": true,
+        "description": "Valid 12-digit Aadhaar (simplified Verhoeff check)"
+    },
+    {
+        "value": "123412345670",
+        "expected_type": "IN_AADHAAR",
+        "should_detect": true,
+        "description": "Valid 12-digit Aadhaar"
+    },
+    {
+        "value": "987654321098",
+        "expected_type": "IN_AADHAAR",
+        "should_detect": true,
+        "description": "Valid 12-digit Aadhaar"
+    },
+    {
+        "value": "12341234567",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid Aadhaar - only 11 digits"
+    },
+    {
+        "value": "1234123456789",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid Aadhaar - 13 digits"
+    },
+    {
+        "value": "ABCD12345678",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid Aadhaar - contains letters"
+    },
+    {
+        "value": "000000000000",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid Aadhaar - all zeros"
+    },
+    {
+        "value": "111111111111",
+        "expected_type": "NON_PII",
+        "should_detect": false,
+        "description": "Invalid Aadhaar - repeated digits"
+    }
+]
