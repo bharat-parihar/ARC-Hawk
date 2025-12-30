@@ -48,6 +48,11 @@ type SemanticGraph struct {
 
 // SyncAssetToNeo4j syncs an asset and its findings to Neo4j (aggregated)
 func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID uuid.UUID) error {
+	// Skip if Neo4j is not available
+	if s.neo4jRepo == nil {
+		return nil
+	}
+
 	// Get asset from PostgreSQL
 	asset, err := s.pgRepo.GetAssetByID(ctx, assetID)
 	if err != nil {
