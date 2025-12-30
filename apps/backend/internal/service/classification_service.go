@@ -6,20 +6,23 @@ import (
 	"math"
 	"strings"
 
+	"github.com/arc-platform/backend/internal/config"
 	"github.com/arc-platform/backend/internal/infrastructure/persistence"
 )
 
 // ClassificationService handles PII classification with multi-signal intelligence
 type ClassificationService struct {
 	repo           *persistence.PostgresRepository
+	config         *config.Config
 	presidioClient *PresidioClient
 	engineVersion  string
 }
 
 // NewClassificationService creates a new classification service
-func NewClassificationService(repo *persistence.PostgresRepository) *ClassificationService {
+func NewClassificationService(repo *persistence.PostgresRepository, cfg *config.Config) *ClassificationService {
 	return &ClassificationService{
 		repo:          repo,
+		config:        cfg,
 		engineVersion: "v2.0-multisignal",
 	}
 }
@@ -82,15 +85,7 @@ type MultiSignalDecision struct {
 	SignalBreakdown map[string]interface{} `json:"signal_breakdown"`
 }
 
-// Signal weights (must sum to 1.0)
-const (
-	WeightRules    = 0.30 // Reduced from 0.45
-	WeightPresidio = 0.50 // Increased from 0.25 - Primary signal
-	WeightContext  = 0.15 // Reduced from 0.20
-	WeightEntropy  = 0.05 // Reduced from 0.10
-)
-
-// Confidence thresholds
+// Confidence thresholds (Use config where possible, but mapping strings to levels can remain for now)
 const (
 	ThresholdConfirmed   = 0.85
 	ThresholdHigh        = 0.65
@@ -104,20 +99,38 @@ func (s *ClassificationService) ClassifyMultiSignal(ctx context.Context, input M
 		SignalBreakdown: make(map[string]interface{}),
 	}
 
+	// Get weights from config
+	wRules := s.config.Classification.WeightRules
+	wPresidio := s.config.Classification.WeightPresidio
+	wContext := s.config.Classification.WeightContext
+	wEntropy := s.config.Classification.WeightEntropy
+
 	// Signal 1: Rule-Based Classification
 	ruleSignal := s.classifyWithRules(input)
+	// Update rule signal weight dynamically
+	ruleSignal.Weight = wRules
+	ruleSignal.WeightedScore = ruleSignal.RawScore * wRules
 	decision.RuleSignal = ruleSignal
 
 	// Signal 2: Presidio ML
 	presidioSignal := s.classifyWithPresidio(ctx, input)
+	// Update presidio signal weight dynamically
+	presidioSignal.Weight = wPresidio
+	presidioSignal.WeightedScore = presidioSignal.RawScore * wPresidio
 	decision.PresidioSignal = presidioSignal
 
 	// Signal 3: Context/Enrichment
 	contextSignal := s.classifyWithContext(input)
+	// Update context signal weight dynamically
+	contextSignal.Weight = wContext
+	contextSignal.WeightedScore = contextSignal.RawScore * wContext
 	decision.ContextSignal = contextSignal
 
 	// Signal 4: Entropy/Statistics
 	entropySignal := s.classifyWithEntropy(input)
+	// Update entropy signal weight dynamically
+	entropySignal.Weight = wEntropy
+	entropySignal.WeightedScore = entropySignal.RawScore * wEntropy
 	decision.EntropySignal = entropySignal
 
 	// --- LOGIC ENHANCEMENT: Presidio Veto/Boost ---
@@ -165,10 +178,10 @@ func (s *ClassificationService) ClassifyMultiSignal(ctx context.Context, input M
 		"context":  contextSignal,
 		"entropy":  entropySignal,
 		"weights": map[string]float64{
-			"rules":    WeightRules,
-			"presidio": WeightPresidio,
-			"context":  WeightContext,
-			"entropy":  WeightEntropy,
+			"rules":    wRules,
+			"presidio": wPresidio,
+			"context":  wContext,
+			"entropy":  wEntropy,
 		},
 	}
 
@@ -231,8 +244,8 @@ func (s *ClassificationService) classifyWithRules(input MultiSignalInput) Signal
 
 	return SignalScore{
 		RawScore:      score,
-		WeightedScore: score * WeightRules,
-		Weight:        WeightRules,
+		WeightedScore: score * s.config.Classification.WeightRules,
+		Weight:        s.config.Classification.WeightRules,
 		Confidence:    score,
 		Explanation:   fmt.Sprintf("Rules: %s", explanation),
 	}
@@ -244,7 +257,7 @@ func (s *ClassificationService) classifyWithPresidio(ctx context.Context, input 
 		return SignalScore{
 			RawScore:      0.0,
 			WeightedScore: 0.0,
-			Weight:        WeightPresidio,
+			Weight:        s.config.Classification.WeightPresidio,
 			Confidence:    0.0,
 			Explanation:   "Presidio: Not available or empty value",
 		}
@@ -255,7 +268,7 @@ func (s *ClassificationService) classifyWithPresidio(ctx context.Context, input 
 		return SignalScore{
 			RawScore:      0.0,
 			WeightedScore: 0.0,
-			Weight:        WeightPresidio,
+			Weight:        s.config.Classification.WeightPresidio,
 			Confidence:    0.0,
 			Explanation:   fmt.Sprintf("Presidio: %s", result.Explanation),
 		}
@@ -263,8 +276,8 @@ func (s *ClassificationService) classifyWithPresidio(ctx context.Context, input 
 
 	return SignalScore{
 		RawScore:      result.Confidence,
-		WeightedScore: result.Confidence * WeightPresidio,
-		Weight:        WeightPresidio,
+		WeightedScore: result.Confidence * s.config.Classification.WeightPresidio,
+		Weight:        s.config.Classification.WeightPresidio,
 		Confidence:    result.Confidence,
 		Explanation:   result.Explanation,
 	}
@@ -278,8 +291,8 @@ func (s *ClassificationService) classifyWithContext(input MultiSignalInput) Sign
 
 	return SignalScore{
 		RawScore:      score,
-		WeightedScore: score * WeightContext,
-		Weight:        WeightContext,
+		WeightedScore: score * s.config.Classification.WeightContext,
+		Weight:        s.config.Classification.WeightContext,
 		Confidence:    score,
 		Explanation:   explanation,
 	}
@@ -301,8 +314,8 @@ func (s *ClassificationService) classifyWithEntropy(input MultiSignalInput) Sign
 
 	return SignalScore{
 		RawScore:      score,
-		WeightedScore: score * WeightEntropy,
-		Weight:        WeightEntropy,
+		WeightedScore: score * s.config.Classification.WeightEntropy,
+		Weight:        s.config.Classification.WeightEntropy,
 		Confidence:    score,
 		Explanation:   explanation,
 	}

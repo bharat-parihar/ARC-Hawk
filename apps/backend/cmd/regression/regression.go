@@ -166,11 +166,14 @@ func predict(text, patternName string) (bool, float64, error) {
 }
 
 func suggestTuning(fp, fn int) {
-	fmt.Println("\n🔧 SUGGESTIONS:")
+	fmt.Println("\n🔧 SUGGESTIONS (Run these commands to tune):")
 	if fp > fn {
-		fmt.Println(" - High False Positive rate. Suggest INCREASING 'Threshold' or DECREASING 'WeightRules'.")
-		fmt.Println(" - Consider adding 'Context' words to DENY list in 'classification_service.go'.")
+		fmt.Println("  # Reduce False Positives by lowering Rule weight or increasing Threshold")
+		fmt.Println("  export CLASSIFICATION_WEIGHT_RULES=0.20")
+		fmt.Println("  export CLASSIFICATION_THRESHOLD=0.70")
 	} else if fn > fp {
-		fmt.Println(" - High False Negative rate. Suggest DECREASING 'Threshold' or INCREASING 'WeightPresidio'.")
+		fmt.Println("  # Reduce False Negatives by increasing Presidio weight or lowering Threshold")
+		fmt.Println("  export CLASSIFICATION_WEIGHT_PRESIDIO=0.60")
+		fmt.Println("  export CLASSIFICATION_THRESHOLD=0.50")
 	}
 }

@@ -144,22 +144,95 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Sidebar Widget: High Risk Assets */}
-                    <div>
-                        <div style={{ marginBottom: '16px' }}>
-                            <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>Top Risk Assets</h2>
-                        </div>
-                        {lineageData && (
-                            <HighRiskAssetsList
-                                assets={lineageData.nodes}
-                                onAssetClick={(id) => {
-                                    // Navigate to Asset Detail or Lineage
-                                    window.location.href = `/lineage?assetId=${id}`;
-                                }}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        {classificationSummary && (
+                            <ModelHealthCard
+                                verified={classificationSummary.verified_count}
+                                falsePositive={classificationSummary.false_positive_count}
                             />
                         )}
+
+                        <div>
+                            <div style={{ marginBottom: '16px' }}>
+                                <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>Top Risk Assets</h2>
+                            </div>
+                            {lineageData && (
+                                <HighRiskAssetsList
+                                    assets={lineageData.nodes}
+                                    onAssetClick={(id) => {
+                                        // Navigate to Asset Detail or Lineage
+                                        window.location.href = `/lineage?assetId=${id}`;
+                                    }}
+                                />
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
+        </div>
+    );
+}
+
+function ModelHealthCard({ verified = 0, falsePositive = 0 }: { verified: number; falsePositive: number }) {
+    const total = verified + falsePositive;
+    const accuracy = total > 0 ? Math.round((verified / total) * 100) : 0;
+    const hasData = total > 0;
+
+    return (
+        <div
+            style={{
+                background: colors.background.surface,
+                border: `1px solid ${colors.border.default}`,
+                borderRadius: '12px',
+                padding: '24px',
+                marginBottom: '8px',
+            }}
+        >
+            <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.text.secondary }}>
+                    AI Model Health
+                </h3>
+                {hasData && (
+                    <span
+                        style={{
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            color: accuracy >= 90 ? '#16a34a' : accuracy >= 70 ? '#ca8a04' : '#dc2626',
+                            background: accuracy >= 90 ? '#dcfce7' : accuracy >= 70 ? '#fef9c3' : '#fee2e2',
+                            padding: '2px 8px',
+                            borderRadius: '12px'
+                        }}
+                    >
+                        {accuracy >= 90 ? 'Healthy' : accuracy >= 70 ? 'Needs Tuning' : 'Critical'}
+                    </span>
+                )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '48px', fontWeight: 800, lineHeight: 1, color: colors.text.primary }}>
+                    {hasData ? `${accuracy}%` : 'N/A'}
+                </span>
+                <span style={{ fontSize: '14px', color: colors.text.secondary, marginBottom: '6px', fontWeight: 600 }}>
+                    Accuracy
+                </span>
+            </div>
+
+            <p style={{ fontSize: '14px', color: colors.text.muted, margin: 0 }}>
+                Based on <strong>{total}</strong> verified feedback samples.
+            </p>
+
+            {hasData && (
+                <div style={{ marginTop: '16px', display: 'flex', gap: '12px', fontSize: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a' }} />
+                        <span>{verified} Verified</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ca8a04' }} />
+                        <span>{falsePositive} False Positives</span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

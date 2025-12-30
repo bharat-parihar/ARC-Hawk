@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/arc-platform/backend/internal/api"
+	"github.com/arc-platform/backend/internal/config"
 	"github.com/arc-platform/backend/internal/infrastructure/database"
 	"github.com/arc-platform/backend/internal/infrastructure/persistence"
 	"github.com/arc-platform/backend/internal/service"
@@ -23,6 +24,9 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using environment variables")
 	}
+
+	// Load application configuration
+	cfg := config.LoadConfig()
 
 	// Set Gin mode
 	ginMode := os.Getenv("GIN_MODE")
@@ -51,7 +55,7 @@ func main() {
 
 	// Initialize services
 	enrichmentService := service.NewEnrichmentService(repo)
-	classificationService := service.NewClassificationService(repo)
+	classificationService := service.NewClassificationService(repo, cfg)
 	classificationSummaryService := service.NewClassificationSummaryService(repo)
 
 	// Optional: Presidio ML integration
