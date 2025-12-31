@@ -134,7 +134,7 @@ export default function DashboardPage() {
                 onSearch={handleSearch}
             />
 
-            <div style={{ padding: '32px', maxWidth: '1600px', margin: '0 auto' }}>
+            <div style={{ padding: '20px', maxWidth: '1800px', margin: '0 auto' }}>
                 <div style={{ marginBottom: '32px' }}>
                     <h1 style={{
                         fontSize: '32px',

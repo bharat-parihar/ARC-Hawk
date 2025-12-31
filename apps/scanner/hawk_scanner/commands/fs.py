@@ -50,7 +50,8 @@ def execute(args):
                 if os.path.isfile(path):
                     files = [path]
                 else:
-                    files = system.list_all_files_iteratively(args, path, exclude_patterns)
+                    # Convert generator to list to allow len() operations
+                    files = list(system.list_all_files_iteratively(args, path, exclude_patterns))
                 
                 # NEW: Analyze binary vs text files
                 file_stats = get_binary_file_stats(files)

@@ -170,50 +170,6 @@ export default function Topbar({
                         </div>
                     </div>
                 )}
-
-                {/* Global Search */}
-                <div
-                    style={{
-                        position: 'relative',
-                        display: 'flex',
-                        alignItems: 'center',
-                    }}
-                >
-                    <span
-                        style={{
-                            position: 'absolute',
-                            left: '12px',
-                            fontSize: '16px',
-                            pointerEvents: 'none',
-                        }}
-                    >
-                        🔍
-                    </span>
-                    <input
-                        type="text"
-                        placeholder="Search assets..."
-                        onChange={(e) => onSearch && onSearch(e.target.value)}
-                        style={{
-                            padding: '10px 16px 10px 40px',
-                            backgroundColor: colors.neutral[50],
-                            border: `1px solid ${colors.neutral[300]}`,
-                            borderRadius: theme.borderRadius.md,
-                            fontSize: theme.fontSize.sm,
-                            color: colors.neutral[900],
-                            minWidth: '240px',
-                            outline: 'none',
-                            transition: 'all 0.2s ease',
-                        }}
-                        onFocus={(e) => {
-                            e.target.style.borderColor = colors.blue[500];
-                            e.target.style.boxShadow = `0 0 0 2px ${colors.blue[100]}`;
-                        }}
-                        onBlur={(e) => {
-                            e.target.style.borderColor = colors.neutral[300];
-                            e.target.style.boxShadow = 'none';
-                        }}
-                    />
-                </div>
             </div>
 
             {/* CSS for pulse animation */}

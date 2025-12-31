@@ -6,11 +6,11 @@ import { theme } from '@/design-system/themes';
 
 interface SidebarProps {
     children?: React.ReactNode;
+    collapsed: boolean;
+    onToggle: () => void;
 }
 
-export default function Sidebar({ children }: SidebarProps) {
-    const [collapsed, setCollapsed] = useState(false);
-
+export default function Sidebar({ children, collapsed, onToggle }: SidebarProps) {
     return (
         <aside
             style={{
@@ -73,7 +73,7 @@ export default function Sidebar({ children }: SidebarProps) {
                 )}
 
                 <button
-                    onClick={() => setCollapsed(!collapsed)}
+                    onClick={onToggle}
                     style={{
                         background: 'transparent',
                         border: `1px solid ${colors.neutral[700]}`,

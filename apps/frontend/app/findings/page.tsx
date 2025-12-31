@@ -68,18 +68,51 @@ export default function FindingsPage() {
             />
 
             <div style={{ padding: '32px', maxWidth: '1600px', margin: '0 auto' }}>
-                <div style={{ marginBottom: '24px' }}>
-                    <h1 style={{
-                        fontSize: '28px',
-                        fontWeight: 800,
-                        color: colors.text.primary,
-                        margin: 0
-                    }}>
-                        Findings Explorer
-                    </h1>
-                    <p style={{ color: colors.text.secondary, marginTop: '8px' }}>
-                        Detailed list of all security findings and PII detections.
-                    </p>
+                <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                        <h1 style={{
+                            fontSize: '28px',
+                            fontWeight: 800,
+                            color: colors.text.primary,
+                            margin: 0
+                        }}>
+                            Findings Explorer
+                        </h1>
+                        <p style={{ color: colors.text.secondary, marginTop: '8px' }}>
+                            Detailed list of all security findings and PII detections.
+                        </p>
+                    </div>
+
+                    {/* Export Button */}
+                    {findingsData && findingsData.findings.length > 0 && (
+                        <button
+                            onClick={() => {
+                                const { exportToCSV } = require('@/utils/export');
+                                exportToCSV(findingsData.findings, 'findings');
+                            }}
+                            style={{
+                                padding: '10px 20px',
+                                borderRadius: '8px',
+                                border: `1px solid ${colors.border.default}`,
+                                backgroundColor: colors.background.surface,
+                                color: colors.text.primary,
+                                fontWeight: 600,
+                                fontSize: '14px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = colors.background.elevated;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = colors.background.surface;
+                            }}
+                        >
+                            📊 Export CSV
+                        </button>
+                    )}
                 </div>
 
                 {error && (
