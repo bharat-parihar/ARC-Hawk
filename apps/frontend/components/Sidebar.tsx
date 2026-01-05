@@ -112,7 +112,7 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
                 <div style={{ marginBottom: '24px' }}>
                     <SectionHeader collapsed={collapsed}>Platform</SectionHeader>
                     <NavSection
-                        icon="🛡️"
+                        icon="📊"
                         label="Risk Overview"
                         href="/"
                         collapsed={collapsed}

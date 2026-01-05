@@ -142,7 +142,6 @@ def get_connection(args):
     else:
         print_error(args, "Please provide a connection file using --connection flag or connection details using --connection-json flag")
         exit(1)
-
 # Global cache for fingerprint data
 _fingerprint_cache = None
 
@@ -155,6 +154,8 @@ def get_fingerprint_file(args=None):
         if os.path.exists(args.fingerprint):
             with open(args.fingerprint, 'r') as file:
                 _fingerprint_cache = yaml.safe_load(file)
+                # NEW: Validate patterns after loading
+                _validate_fingerprint_patterns(args, _fingerprint_cache)
                 return _fingerprint_cache
         else:
             if args:
@@ -169,6 +170,8 @@ def get_fingerprint_file(args=None):
             try:
                 with open('fingerprint.yml', 'r') as file:
                     _fingerprint_cache = yaml.safe_load(file)
+                    # NEW: Validate patterns after loading
+                    _validate_fingerprint_patterns(args, _fingerprint_cache)
                     return _fingerprint_cache
             except Exception as e:
                 pass
@@ -182,6 +185,8 @@ def get_fingerprint_file(args=None):
                 with open('fingerprint.yml', 'wb') as file:
                     file.write(response.content)
                 _fingerprint_cache = yaml.safe_load(response.content)
+                # NEW: Validate patterns after loading
+                _validate_fingerprint_patterns(args, _fingerprint_cache)
                 return _fingerprint_cache
             else:
                 if args:
@@ -191,6 +196,39 @@ def get_fingerprint_file(args=None):
             if args:
                 print_error(args, f"Unable to download default fingerprint.yml please provide your own fingerprint file using --fingerprint flag")
             exit(1)
+
+def _validate_fingerprint_patterns(args, patterns):
+    """Validate fingerprint patterns for common issues"""
+    if not patterns:
+        return
+    
+    # Check 1: Warn about case-sensitive patterns that might miss data
+    case_sensitive_patterns = []
+    for name, regex in patterns.items():
+        if not regex.startswith('(?i)') and any(char.isalpha() for char in regex):
+            case_sensitive_patterns.append(name)
+    
+    if case_sensitive_patterns and args:
+        print_info(args, f"ℹ️  Note: {len(case_sensitive_patterns)} patterns are case-sensitive (may miss lowercase variants)")
+        if hasattr(args, 'debug') and args.debug:
+            print_debug(args, f"Case-sensitive patterns: {', '.join(case_sensitive_patterns[:10])}")
+    
+    # Check 2: Validate regex compilation
+    invalid_patterns = []
+    for name, regex in patterns.items():
+        try:
+            re.compile(regex)
+        except re.error as e:
+            invalid_patterns.append(f"{name}: {e}")
+            print_error(args, f"❌ Invalid regex in pattern '{name}': {e}")
+    
+    if invalid_patterns:
+        print_error(args, f"Found {len(invalid_patterns)} invalid regex patterns - scan may fail")
+    
+    # Check 3: Pattern statistics
+    total_patterns = len(patterns)
+    if args:
+        print_success(args, f"✅ Loaded {total_patterns} patterns from fingerprint.yml")
 
 def print_banner(args):
     line1 = "+ ================================================== +"
@@ -234,6 +272,19 @@ def print_banner(args):
     if not args.shutup:
         console.print(banner)
 
+def normalize_for_matching(text):
+    """Normalize text for consistent pattern matching (removes formatting)"""
+    if not text:
+        return text
+    normalized = str(text)
+    # Remove common formatting that might prevent regex matches
+    normalized = normalized.replace('-', '')
+    normalized = normalized.replace(' ', '')
+    normalized = normalized.replace('(', '')
+    normalized = normalized.replace(')', '')
+    normalized = normalized.replace('.', '')
+    return normalized
+
 def match_strings(args, content, source='text'):
     redacted = False
     if args and 'connection' in args:
@@ -250,10 +301,15 @@ def match_strings(args, content, source='text'):
         found = {} 
         ## parse pattern_regex as Regex
         complied_regex = re.compile(pattern_regex, re.IGNORECASE)
+        
+        # Normalize content before matching for consistent results
+        normalized_content = normalize_for_matching(content)
+        raw_content = content  # Keep original for sample_text
+        
         if args:
             print_debug(args, f"Regex: {complied_regex}")
-            print_debug(args, f"Content: {content}")
-        matches = re.findall(complied_regex, content)
+            print_debug(args, f"Normalized Content: {normalized_content}")
+        matches = re.findall(complied_regex, normalized_content)
         print_debug(args, f"Matches: {matches}")
         found['data_source'] = source
         if matches:
@@ -271,9 +327,9 @@ def match_strings(args, content, source='text'):
                 found['matches'] = matches
 
             if redacted:
-                found['sample_text'] = RedactData(content[:50])
+                found['sample_text'] = RedactData(raw_content[:50])
             else:
-                found['sample_text'] = content[:50]
+                found['sample_text'] = raw_content[:50]  # Use original, not normalized
             if found['matches'] and len(found['matches']) > 0:
                 found['matches'] = [x.strip() for x in found['matches']]
                 found['matches'] = list(set(found['matches']))
@@ -592,37 +648,29 @@ def SlackNotify(msg, args):
                 print_error(args, f"An error occurred: {str(e)}")
 
 def evaluate_severity(json_data, rules):
-    if 'severity_rules' not in rules:
-        rules = {
-            'severity_rules': {
-                'Highest': [
-                    {'query': "length(matches) > `20`", 'description': "Detected more than 20 PII or Secrets"},
-                ],
-                'High': [
-                    {'query': "length(matches) > `10` && length(matches) <= `20`", 'description': "Detected more than 10 PII or Secrets"},
-                ],
-                'Medium': [
-                    {'query': "length(matches) > `5` && length(matches) <= `10`", 'description': "Detected more than 5 PII or Secrets"},
-                ],
-                'Low': [
-                    {'query': "length(matches) <= `5`", 'description': "Detected less than 5 PII or Secrets"},
-                ],
-            }
-        }
+    """Evaluate severity based on PII TYPE, not volume (Phase 3 fix)"""
+    pattern_name = json_data.get('pattern_name', '').lower()
     
-    for severity, conditions in rules['severity_rules'].items():
-        for condition in conditions:
-            query = condition['query']
-            description = condition['description']
-            if jmespath.search(query, json_data):
-                # Add severity details to the JSON data
-                json_data['severity'] = severity
-                json_data['severity_description'] = description
-                return json_data
-
-    # If no match, add default severity
-    json_data['severity'] = "unknown"
-    json_data['severity_description'] = "No matching rule found."
+    # TYPE-BASED SEVERITY (not volume-based)
+    # Sensitive government IDs and financial data
+    if any(kw in pattern_name for kw in ['ssn', 'aadhaar', 'aadhar', 'pan', 'pancard', 'credit_card', 'debit_card', 'passport']):
+        severity = 'CRITICAL'
+        description = 'Sensitive PII detected (government ID or financial data)'
+    # Credentials and secrets
+    elif any(kw in pattern_name for kw in ['aws_key', 'api_key', 'secret', 'password', 'token', 'private_key', 'access_key']):
+        severity = 'CRITICAL'
+        description = 'Credentials or secrets detected'
+    # Personal contact information
+    elif any(kw in pattern_name for kw in ['email', 'phone', 'mobile']):
+        severity = 'HIGH'
+        description = 'Personal contact information detected'
+    # Other potential PII
+    else:
+        severity = 'MEDIUM'
+        description = 'Potentially sensitive data detected'
+    
+    json_data['severity'] = severity
+    json_data['severity_description'] = description
     return json_data
 
 def enhance_and_ocr(image_path):

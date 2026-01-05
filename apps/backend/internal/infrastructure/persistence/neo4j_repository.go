@@ -292,6 +292,7 @@ func (r *Neo4jRepository) GetLineageGraph(ctx context.Context) (*LineageGraph, e
 			OPTIONAL MATCH (s)-[r1:CONTAINS]->(a:Asset)
 			OPTIONAL MATCH (a)-[r2:EXPOSES]->(f:Finding)
 			OPTIONAL MATCH (f)-[r3:CLASSIFIED_AS]->(c:Classification)
+			WHERE c.type IS NULL OR c.type <> 'Non-PII'
 			RETURN s, a, f, c, r1, r2, r3
 		`
 

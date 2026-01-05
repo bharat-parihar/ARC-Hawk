@@ -99,93 +99,211 @@ const (
 	ThresholdNeedsReview = 0.45
 )
 
-// ClassifyMultiSignal performs multi-signal classification
+// ClassifyMultiSignal performs gate-based classification with deterministic validation
+// ARCHITECTURE: Detection → Validation (GATE) → Enrichment → Classification
 func (s *ClassificationService) ClassifyMultiSignal(ctx context.Context, input MultiSignalInput) (*MultiSignalDecision, error) {
 	decision := &MultiSignalDecision{
 		EngineVersion:   s.engineVersion,
 		SignalBreakdown: make(map[string]interface{}),
 	}
 
-	// Get weights from config
-	wRules := s.config.Classification.WeightRules
-	wPresidio := s.config.Classification.WeightPresidio
-	wContext := s.config.Classification.WeightContext
-	wEntropy := s.config.Classification.WeightEntropy
-
-	// Signal 1: Rule-Based Classification
+	// STAGE 1: Rule-Based Entity Type Detection
 	ruleSignal := s.classifyWithRules(input)
-	// Update rule signal weight dynamically
-	ruleSignal.Weight = wRules
-	ruleSignal.WeightedScore = ruleSignal.RawScore * wRules
 	decision.RuleSignal = ruleSignal
 
-	// Signal 2: Presidio ML
+	// STAGE 2: Presidio ML Entity Proposal (if available)
 	presidioSignal := s.classifyWithPresidio(ctx, input)
-	// Update presidio signal weight dynamically
-	presidioSignal.Weight = wPresidio
-	presidioSignal.WeightedScore = presidioSignal.RawScore * wPresidio
 	decision.PresidioSignal = presidioSignal
 
-	// Signal 3: Context/Enrichment
-	contextSignal := s.classifyWithContext(input)
-	// Update context signal weight dynamically
-	contextSignal.Weight = wContext
-	contextSignal.WeightedScore = contextSignal.RawScore * wContext
-	decision.ContextSignal = contextSignal
+	// STAGE 3: HARD VALIDATION GATE (ABSOLUTE VETO)
+	// Determine entity type from rule + Presidio signals
+	entityType := s.determineEntityType(ruleSignal, presidioSignal, input.PatternName)
 
-	// Signal 4: Entropy/Statistics
-	entropySignal := s.classifyWithEntropy(input)
-	// Update entropy signal weight dynamically
-	entropySignal.Weight = wEntropy
-	entropySignal.WeightedScore = entropySignal.RawScore * wEntropy
-	decision.EntropySignal = entropySignal
+	// Normalize value for validation
+	normalized := strings.TrimSpace(input.MatchValue)
+	digitsOnly := extractDigitsOnly(normalized)
 
-	// REMOVED: Veto/boost logic with magic numbers
-	// The validators inside classifyWithPresidio now handle false positive elimination
-	// No need for arbitrary penalties or boosts
+	// Run appropriate validator based on entity type
+	validationPassed := s.runValidator(entityType, normalized, digitsOnly)
 
-	// CRITICAL FIX #2: If Presidio validators failed, veto entire classification
-	// This prevents context/entropy from resurrecting failed validations
-	if presidioSignal.RawScore == 0.0 && strings.Contains(presidioSignal.Explanation, "Failed") {
+	if !validationPassed {
+		// VALIDATOR VETO - Discard immediately
+		// Context and entropy CANNOT resurrect this finding
 		decision.FinalScore = 0.0
-		decision.ConfidenceLevel = "Discard"
+		decision.ConfidenceLevel = "DISCARD"
 		decision.Classification = "Non-PII"
-		decision.SubCategory = "Validator Failed"
-		decision.Justification = "Validator rejection (absolute veto): " + presidioSignal.Explanation
+		decision.SubCategory = "Validation Failed"
+		decision.Justification = fmt.Sprintf("Failed %s validation - HARD VETO", entityType)
+
+		// Store zero signals for transparency
+		decision.ContextSignal = SignalScore{RawScore: 0.0, Explanation: "Skipped (validation failed)"}
+		decision.EntropySignal = SignalScore{RawScore: 0.0, Explanation: "Skipped (validation failed)"}
+
 		return decision, nil
 	}
 
-	// Calculate final weighted score (deterministic aggregation)
-	decision.FinalScore = (presidioSignal.WeightedScore +
-		contextSignal.WeightedScore +
-		entropySignal.WeightedScore)
+	// STAGE 4: Enrichment (ONLY for validated findings)
+	contextSignal := s.classifyWithContext(input)
+	decision.ContextSignal = contextSignal
 
-	// Cap at 1.0
-	if decision.FinalScore > 1.0 {
-		decision.FinalScore = 1.0
-	}
+	entropySignal := s.classifyWithEntropy(input)
+	decision.EntropySignal = entropySignal
 
-	// Determine confidence level and classification
-	s.applyThresholds(decision, ruleSignal)
+	// STAGE 5: Confidence Tier Assignment (NOT probabilistic scoring)
+	// All validated findings have FinalScore = 1.0 (binary: validated or not)
+	// Confidence tier is based on enrichment, not validation
+	decision.FinalScore = 1.0
+	decision.ConfidenceLevel = s.assignConfidenceTier(
+		presidioSignal.Confidence,
+		contextSignal.RawScore,
+	)
+
+	// STAGE 6: Classification Type Assignment
+	decision.Classification = s.extractClassificationFromEntity(entityType)
+	decision.SubCategory = s.extractSubCategory(decision.Classification)
+
+	// Set DPDPA metadata
+	s.setDPDPAMetadata(decision)
 
 	// Build comprehensive justification
 	decision.Justification = s.buildJustification(decision)
 
-	// Store signal breakdown
+	// Store signal breakdown (for transparency, not scoring)
 	decision.SignalBreakdown = map[string]interface{}{
 		"rule":     ruleSignal,
 		"presidio": presidioSignal,
 		"context":  contextSignal,
 		"entropy":  entropySignal,
-		"weights": map[string]float64{
-			"rules":    wRules,
-			"presidio": wPresidio,
-			"context":  wContext,
-			"entropy":  wEntropy,
+		"validation": map[string]interface{}{
+			"entity_type": entityType,
+			"passed":      validationPassed,
+			"method":      s.getValidatorName(entityType),
 		},
 	}
 
 	return decision, nil
+}
+
+// determineEntityType selects the most appropriate entity type from available signals
+func (s *ClassificationService) determineEntityType(ruleSignal SignalScore, presidioSignal SignalScore, patternName string) string {
+	// Prefer Presidio's ML proposal if available and confident
+	if presidioSignal.Confidence > 0.50 && len(presidioSignal.Explanation) > 0 {
+		// Extract entity type from Presidio explanation
+		// Format: "Presidio detected X PII entities: [TYPE1, TYPE2]"
+		if strings.Contains(presidioSignal.Explanation, "CREDIT_CARD") {
+			return "CREDIT_CARD"
+		}
+		if strings.Contains(presidioSignal.Explanation, "IN_AADHAAR") {
+			return "IN_AADHAAR"
+		}
+		if strings.Contains(presidioSignal.Explanation, "IN_PAN") {
+			return "IN_PAN"
+		}
+		if strings.Contains(presidioSignal.Explanation, "US_SSN") {
+			return "US_SSN"
+		}
+		if strings.Contains(presidioSignal.Explanation, "EMAIL") {
+			return "EMAIL_ADDRESS"
+		}
+		if strings.Contains(presidioSignal.Explanation, "PHONE") {
+			return "PHONE_NUMBER"
+		}
+	}
+
+	// Fallback to rule-based inference from pattern name
+	return inferEntityTypeFromPattern(patternName)
+}
+
+// runValidator executes the appropriate validator for the entity type
+func (s *ClassificationService) runValidator(entityType, normalized, digitsOnly string) bool {
+	switch entityType {
+	case "CREDIT_CARD":
+		return luhnValidate(digitsOnly)
+	case "IN_AADHAAR":
+		return len(digitsOnly) == 12 && verhoeffValidate(digitsOnly)
+	case "IN_PAN":
+		return panValidate(normalized)
+	case "US_SSN":
+		return len(digitsOnly) == 9 && ssnValidate(digitsOnly)
+	case "EMAIL_ADDRESS":
+		return strings.Contains(normalized, "@") && strings.Contains(normalized, ".")
+	case "PHONE_NUMBER":
+		return len(digitsOnly) >= 8 && len(digitsOnly) <= 15
+	default:
+		// Unknown entity types pass through (no validator available)
+		return true
+	}
+}
+
+// assignConfidenceTier determines confidence tier based on enrichment signals
+// Decision table from Phase 2 architecture
+func (s *ClassificationService) assignConfidenceTier(presidioMLConf float64, contextScore float64) string {
+	// TIER 1: CONFIRMED - High ML confidence + High-risk context
+	if presidioMLConf > 0.80 && contextScore > 0.7 {
+		return "CONFIRMED"
+	}
+
+	// TIER 2: HIGH_CONFIDENCE - Medium ML OR high context
+	if presidioMLConf >= 0.60 || contextScore > 0.7 {
+		return "HIGH_CONFIDENCE"
+	}
+
+	// TIER 3: VALIDATED - All validated findings that don't meet higher tiers
+	return "VALIDATED"
+}
+
+// extractClassificationFromEntity maps entity type to classification category
+func (s *ClassificationService) extractClassificationFromEntity(entityType string) string {
+	switch entityType {
+	case "CREDIT_CARD", "IN_AADHAAR", "IN_PAN", "US_SSN":
+		return "Sensitive Personal Data"
+	case "EMAIL_ADDRESS", "PHONE_NUMBER":
+		return "Personal Data"
+	default:
+		// Check if it's a secret/credential pattern
+		if isSecretPattern(entityType) {
+			return "Secrets"
+		}
+		return "Non-PII"
+	}
+}
+
+// setDPDPAMetadata assigns DPDPA compliance metadata
+func (s *ClassificationService) setDPDPAMetadata(decision *MultiSignalDecision) {
+	switch decision.Classification {
+	case "Sensitive Personal Data":
+		decision.DPDPACategory = "Sensitive Personal Data"
+		decision.RequiresConsent = true
+	case "Personal Data":
+		decision.DPDPACategory = "Personal Data"
+		decision.RequiresConsent = true
+	case "Secrets":
+		decision.DPDPACategory = "N/A"
+		decision.RequiresConsent = false
+	default:
+		decision.DPDPACategory = "N/A"
+		decision.RequiresConsent = false
+	}
+}
+
+// getValidatorName returns human-readable validator name for documentation
+func (s *ClassificationService) getValidatorName(entityType string) string {
+	switch entityType {
+	case "CREDIT_CARD":
+		return "Luhn Algorithm"
+	case "IN_AADHAAR":
+		return "Verhoeff Checksum"
+	case "IN_PAN":
+		return "PAN Format Validator"
+	case "US_SSN":
+		return "SSA Rules"
+	case "EMAIL_ADDRESS":
+		return "RFC 5322 Format"
+	case "PHONE_NUMBER":
+		return "E.164 Length Check"
+	default:
+		return "None"
+	}
 }
 
 // classifyWithRules performs rule-based classification (Primary signal)
@@ -251,45 +369,19 @@ func (s *ClassificationService) classifyWithRules(input MultiSignalInput) Signal
 	}
 }
 
-// classifyWithPresidio performs ML-based classification using Presidio with hard validation
+// classifyWithPresidio performs ML-based entity type proposal using Presidio
+// ROLE: Entity proposer ONLY - does NOT validate
+// VALIDATION: Happens at gate in ClassifyMultiSignal()
 func (s *ClassificationService) classifyWithPresidio(ctx context.Context, input MultiSignalInput) SignalScore {
-	// Import validators and normalization
-	// Note: These imports should be at package level, but shown here for clarity
-	// import "github.com/arc-platform/backend/pkg/validation"
-	// import "github.com/arc-platform/backend/pkg/normalization"
-
-	// If Presidio unavailable, use rule-based detection with validators
+	// If Presidio unavailable, return zero signal
+	// Main gate will use rule-based entity type inference
 	if s.presidioClient == nil {
-		// Fallback: Use rule-based detection + validators
-		ruleSignal := s.classifyWithRules(input)
-		if ruleSignal.RawScore < 0.50 {
-			return SignalScore{
-				RawScore:      0.0,
-				WeightedScore: 0.0,
-				Weight:        s.config.Classification.WeightPresidio,
-				Confidence:    0.0,
-				Explanation:   "Presidio unavailable, rule score too low",
-			}
-		}
-		// Run validators based on pattern type
-		entityType := inferEntityTypeFromPattern(input.PatternName)
-		normalized := strings.TrimSpace(input.MatchValue)
-		if !validateEntity(entityType, normalized, extractDigitsOnly(normalized)) {
-			return SignalScore{
-				RawScore:      0.0,
-				WeightedScore: 0.0,
-				Weight:        s.config.Classification.WeightPresidio,
-				Confidence:    0.0,
-				Explanation:   fmt.Sprintf("Presidio unavailable, validator failed for %s", entityType),
-			}
-		}
-		// Validators passed, return rule-based score
 		return SignalScore{
-			RawScore:      ruleSignal.RawScore * 0.8, // 80% of rule score since no ML
-			WeightedScore: ruleSignal.RawScore * 0.8 * s.config.Classification.WeightPresidio,
+			RawScore:      0.0,
+			WeightedScore: 0.0,
 			Weight:        s.config.Classification.WeightPresidio,
-			Confidence:    ruleSignal.RawScore * 0.8,
-			Explanation:   "Presidio unavailable, using validated rule-based detection",
+			Confidence:    0.0,
+			Explanation:   "Presidio unavailable",
 		}
 	}
 
@@ -303,11 +395,10 @@ func (s *ClassificationService) classifyWithPresidio(ctx context.Context, input 
 		}
 	}
 
-	// Step 1: Normalize value before sending to Presidio
-	// normalized := normalization.Normalize(input.MatchValue)
-	normalized := strings.TrimSpace(input.MatchValue) // Simple normalization for now
+	// Normalize value before sending to Presidio
+	normalized := strings.TrimSpace(input.MatchValue)
 
-	// Step 2: Call Presidio for ML-based detection
+	// Call Presidio for ML-based entity type proposal
 	result, err := s.presidioClient.Analyze(ctx, normalized)
 	if err != nil {
 		return SignalScore{
@@ -319,7 +410,7 @@ func (s *ClassificationService) classifyWithPresidio(ctx context.Context, input 
 		}
 	}
 
-	// If Presidio service unavailable or didn't detect anything
+	// If Presidio didn't detect anything
 	if !result.Available || result.Confidence == 0.0 {
 		return SignalScore{
 			RawScore:      0.0,
@@ -330,83 +421,17 @@ func (s *ClassificationService) classifyWithPresidio(ctx context.Context, input 
 		}
 	}
 
-	// Step 3: HARD VALIDATION - Validators override Presidio false positives
-	// This is where we eliminate false positives systematically
+	// REMOVED: All validation logic
+	// Presidio ONLY proposes entity types and provides ML confidence
+	// Validation happens at the single gate in ClassifyMultiSignal()
 
-	validatorPassed := true
-	validatorExplanation := ""
-	entityType := result.EntityTypes[0] // Highest confidence entity type
-
-	// Extract digits for numeric validators
-	digitsOnly := extractDigitsOnly(normalized)
-
-	switch entityType {
-	case "CREDIT_CARD":
-		// CRITICAL: Credit card MUST pass Luhn algorithm
-		// if !validation.ValidateLuhn(digitsOnly) {
-		if !luhnValidate(digitsOnly) { // Using inline implementation for now
-			validatorPassed = false
-			validatorExplanation = " (Failed Luhn checksum - not a valid credit card)"
-		}
-
-	case "IN_AADHAAR":
-		// CRITICAL: Aadhaar MUST pass Verhoeff checksum and be exactly 12 digits
-		// if len(digitsOnly) != 12 || !validation.ValidateVerhoeff(digitsOnly) {
-		if len(digitsOnly) != 12 || !verhoeffValidate(digitsOnly) { // Using inline implementation for now
-			validatorPassed = false
-			validatorExplanation = " (Failed Verhoeff checksum - not a valid Aadhaar)"
-		}
-
-	case "IN_PAN":
-		// CRITICAL: PAN MUST match format AAAAA9999A
-		// if !validation.ValidatePAN(normalized) {
-		if !panValidate(normalized) { // Using inline implementation for now
-			validatorPassed = false
-			validatorExplanation = " (Invalid PAN format)"
-		}
-
-	case "US_SSN":
-		// CRITICAL: SSN MUST pass SSA rules and not be in blacklist
-		// if !validation.ValidateSSN(digitsOnly) {
-		if !ssnValidate(digitsOnly) { // Using inline implementation for now
-			validatorPassed = false
-			validatorExplanation = " (Invalid SSN format or blacklisted)"
-		}
-
-	case "EMAIL_ADDRESS":
-		// Email validation (basic)
-		if !strings.Contains(normalized, "@") || !strings.Contains(normalized, ".") {
-			validatorPassed = false
-			validatorExplanation = " (Invalid email format)"
-		}
-
-	case "PHONE_NUMBER":
-		// Phone number validation (must be 10+ digits)
-		if len(digitsOnly) < 8 || len(digitsOnly) > 15 {
-			validatorPassed = false
-			validatorExplanation = " (Invalid phone number length)"
-		}
-	}
-
-	// Step 4: If validator failed, OVERRIDE Presidio and return 0
-	// GOLDEN RULE: Validators ALWAYS win over Presidio for false positive elimination
-	if !validatorPassed {
-		return SignalScore{
-			RawScore:      0.0, // Validator killed it
-			WeightedScore: 0.0,
-			Weight:        s.config.Classification.WeightPresidio,
-			Confidence:    0.0,
-			Explanation:   result.Explanation + validatorExplanation,
-		}
-	}
-
-	// Step 5: Validator passed - return Presidio confidence
+	// Return Presidio's ML confidence for enrichment
 	return SignalScore{
 		RawScore:      result.Confidence,
 		WeightedScore: result.Confidence * s.config.Classification.WeightPresidio,
 		Weight:        s.config.Classification.WeightPresidio,
 		Confidence:    result.Confidence,
-		Explanation:   result.Explanation + " ✓ Validated",
+		Explanation:   result.Explanation,
 	}
 }
 

@@ -168,12 +168,20 @@ func (s *LineageService) BuildLineage(ctx context.Context, filters LineageFilter
 					classificationType = classifications[0].ClassificationType
 					confidence = classifications[0].ConfidenceScore
 
+					// AUTO-FILTER: Exclude Non-PII from Lineage Graph
+					if classificationType == "Non-PII" {
+						continue
+					}
+
 					// Filter by data type if specified
 					if filters.DataType != "" && classificationType != filters.DataType {
 						continue
 					}
 				} else if filters.DataType != "" {
 					continue
+				} else {
+					// If no classification (unknown), and we want clean graph, maybe skip?
+					// For now, allow but treat as low risk.
 				}
 
 				// Get review status

@@ -110,8 +110,8 @@ export default function DashboardPage() {
     // Calculate metrics
     const totalFindings = classificationSummary?.total || findingsData?.total || 0;
     const sensitivePIICount = classificationSummary?.by_type?.['Sensitive Personal Data']?.count || 0;
-    // accurate count from backend aggregation (summing Critical and Highest)
-    const criticalFindings = (classificationSummary?.by_severity?.['Critical'] || 0) + (classificationSummary?.by_severity?.['Highest'] || 0);
+    // accurate count from backend aggregation (CRITICAL unified severity)
+    const criticalFindings = (classificationSummary?.by_severity?.['CRITICAL'] || 0) + (classificationSummary?.by_severity?.['Critical'] || 0);
 
     // Calculate high-risk assets
     const highRiskAssets = lineageData?.nodes.filter(n => n.risk_score >= 70).length || 0;

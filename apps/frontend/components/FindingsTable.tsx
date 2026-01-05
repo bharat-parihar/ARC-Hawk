@@ -269,14 +269,18 @@ export default function FindingsTable({
             <h2 className="section-title">Findings ({total})</h2>
 
             <div className="filters">
-                <input
-                    type="text"
-                    placeholder="Search by pattern name..."
-                    className="filter-input"
-                    value={search}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    style={{ minWidth: 250 }}
-                />
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <input
+                        type="text"
+                        placeholder="Search by pattern name... (Coming Soon)"
+                        className="filter-input"
+                        value={search}
+                        onChange={(e) => handleSearchChange(e.target.value)}
+                        style={{ minWidth: 250, opacity: 0.6, cursor: 'not-allowed' }}
+                        disabled={true}
+                        title="Search functionality coming soon - backend implementation pending"
+                    />
+                </div>
 
                 <select
                     className="filter-select"
@@ -291,18 +295,18 @@ export default function FindingsTable({
                 </select>
             </div>
 
-            <div style={{ overflowX: 'auto' }}>
-                <table className="table">
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table className="table" style={{ minWidth: '1200px' }}>
                     <thead>
                         <tr>
-                            <th style={{ width: 40 }}></th>
-                            <th>Asset</th>
-                            <th>Environment / System</th>
-                            <th>Pattern</th>
-                            <th>Evidence</th>
-                            <th>Severity</th>
-                            <th>Classification</th>
-                            <th>Confidence</th>
+                            <th style={{ width: 40, minWidth: 40 }}></th>
+                            <th style={{ minWidth: 200, width: '15%' }}>Asset</th>
+                            <th style={{ minWidth: 150, width: '12%' }}>Environment / System</th>
+                            <th style={{ minWidth: 120, width: '10%' }}>Pattern</th>
+                            <th style={{ minWidth: 150, width: '15%' }}>Evidence</th>
+                            <th style={{ minWidth: 100, width: '8%' }}>Severity</th>
+                            <th style={{ minWidth: 140, width: '12%' }}>Classification</th>
+                            <th style={{ minWidth: 180, width: '15%' }}>Confidence</th>
                         </tr>
                     </thead>
                     <tbody>

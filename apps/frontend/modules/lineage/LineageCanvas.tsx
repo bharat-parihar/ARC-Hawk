@@ -71,67 +71,98 @@ function LineageCanvasContent({ nodes: graphNodes, edges: graphEdges, onNodeClic
         );
     }
 
-    return (
-        <div
-            style={{
-                height: 'calc(100vh - 250px)',
-                background: colors.background.primary,  // Soft gray background
-                borderRadius: '12px',
-                overflow: 'hidden',
-                border: `1px solid ${colors.border.default}`,
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
-                position: 'relative',
-            }}
-        >
-            <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onNodeClick={handleNodeClick}
-                nodeTypes={nodeTypes}
-                fitView
-                fitViewOptions={{
-                    padding: 0.15,
-                    minZoom: 0.5,
-                    maxZoom: 1.5,
-                }}
-                minZoom={0.2}
-                maxZoom={2}
-                attributionPosition="bottom-left"
-                proOptions={{ hideAttribution: true }}
-            >
-                <Controls showInteractive={false} />
-                <Background
-                    color={colors.border.subtle}
-                    gap={20}
-                    style={{ opacity: 0.5 }}
-                />
-                <MiniMap
-                    nodeColor={(n) => {
-                        const nodeType = n.data.type;
-                        if (nodeType === 'system') return colors.nodeColors.system;
-                        if (nodeType === 'asset' || nodeType === 'file' || nodeType === 'table')
-                            return colors.nodeColors.asset;
-                        if (nodeType === 'data_category' || nodeType === 'category')
-                            return colors.nodeColors.category;
-                        if (nodeType === 'finding') {
-                            return n.data.risk_score >= 90 ? colors.state.risk : colors.border.default;
-                        }
-                        return colors.border.default;
-                    }}
-                    style={{
-                        border: `1px solid ${colors.border.default}`,
-                        borderRadius: '8px',
-                        background: colors.background.surface,
-                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-                    }}
-                    maskColor="rgba(248, 250, 252, 0.8)"
-                />
-            </ReactFlow>
+    const isLargeGraph = graphNodes.length > 50;
 
-            <LineageLegend />
-        </div>
+    return (
+        <>
+            {isLargeGraph && (
+                <div style={{
+                    padding: '12px 16px',
+                    marginBottom: '16px',
+                    background: '#FEF9C3',
+                    border: '1px solid #FDE047',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    fontSize: '14px',
+                    color: '#854D0E'
+                }}>
+                    <span style={{ fontSize: '18px' }}>ℹ️</span>
+                    <div>
+                        <strong>Large Graph Detected</strong>
+                        <span style={{ marginLeft: '8px' }}>
+                            ({graphNodes.length} nodes) - Expand nodes selectively for better performance
+                        </span>
+                    </div>
+                </div>
+            )}
+            <div
+                style={{
+                    height: 'calc(100vh - 250px)',
+                    background: colors.background.primary,  // Soft gray background
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    border: `1px solid ${colors.border.default}`,
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
+                    position: 'relative',
+                }}
+            >
+                <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeClick={handleNodeClick}
+                    nodeTypes={nodeTypes}
+                    nodesDraggable={true}
+                    nodesConnectable={false}
+                    nodesFocusable={true}
+                    edgesFocusable={false}
+                    elementsSelectable={true}
+                    fitView
+                    fitViewOptions={{
+                        padding: 0.15,
+                        minZoom: 0.5,
+                        maxZoom: 1.5,
+                    }}
+                    minZoom={0.2}
+                    maxZoom={2}
+                    attributionPosition="bottom-left"
+                    proOptions={{ hideAttribution: true }}
+                >
+                    <Controls showInteractive={false} />
+                    <Background
+                        color={colors.border.subtle}
+                        gap={20}
+                        style={{ opacity: 0.5 }}
+                    />
+                    <MiniMap
+                        nodeColor={(n) => {
+                            const nodeType = n.data.type;
+                            if (nodeType === 'system') return colors.nodeColors.system;
+                            if (nodeType === 'asset' || nodeType === 'file' || nodeType === 'table')
+                                return colors.nodeColors.asset;
+                            if (nodeType === 'data_category' || nodeType === 'category')
+                                return colors.nodeColors.category;
+                            if (nodeType === 'finding') {
+                                return n.data.risk_score >= 90 ? colors.state.risk : colors.border.default;
+                            }
+                            return colors.border.default;
+                        }}
+                        style={{
+                            border: `1px solid ${colors.border.default}`,
+                            borderRadius: '8px',
+                            background: colors.background.surface,
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                        }}
+                        maskColor="rgba(248, 250, 252, 0.8)"
+                    />
+                </ReactFlow>
+
+                <LineageLegend />
+            </div>
+        </>
     );
 }
 

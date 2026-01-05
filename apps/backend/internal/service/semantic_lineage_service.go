@@ -294,6 +294,19 @@ func (s *SemanticLineageService) fallbackToPostgres(ctx context.Context, _ Seman
 	systemMap := make(map[string]bool)
 
 	for _, asset := range assets {
+		// Check if asset has PII findings (skip pure infrastructure/non-PII assets for cleaner graph)
+		findingCount, err := s.pgRepo.CountFindings(ctx, repository.FindingFilters{AssetID: &asset.ID})
+		if err != nil || findingCount == 0 {
+			// If we can't efficiently check for Non-PII specifically in CountFindings without modifying it everywhere,
+			// we assume 0 findings = skip.
+			// The repo.CountFindings already excludes Non-PII if we modified it earlier!
+			// YES - we modified finding_repository.go CountFindings to auto-exclude Non-PII.
+			// So findingCount here will be 0 if all findings are Non-PII.
+			if findingCount == 0 {
+				continue
+			}
+		}
+
 		// Create system node
 		systemID := fmt.Sprintf("system-%s", asset.Host)
 		if !systemMap[systemID] {

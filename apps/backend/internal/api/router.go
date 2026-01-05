@@ -73,6 +73,8 @@ func (r *Router) SetupRoutes(router *gin.Engine, allowedOrigins string) {
 			scans.POST("/ingest", r.ingestionHandler.IngestScan)
 			scans.GET("/latest", r.ingestionHandler.GetLatestScan)
 			scans.GET("/:id", r.ingestionHandler.GetScanStatus)
+// NEW: Clear previous scan data for clean scan-replace workflow
+scans.DELETE("/clear", r.ingestionHandler.ClearScanData)
 		}
 
 		// Lineage

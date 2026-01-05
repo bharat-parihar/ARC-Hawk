@@ -56,16 +56,22 @@ func (r *PostgresRepository) GetClassificationsByFindingID(ctx context.Context, 
 	for rows.Next() {
 		c := &entity.Classification{}
 		var signalBreakdownJSON []byte
+		var retentionPeriod *string // Use pointer to handle NULL
 
 		err := rows.Scan(
 			&c.ID, &c.FindingID, &c.ClassificationType, &c.SubCategory,
 			&c.ConfidenceScore, &c.Justification, &c.DPDPACategory,
-			&c.RequiresConsent, &c.RetentionPeriod,
+			&c.RequiresConsent, &retentionPeriod, // Scan into pointer
 			&signalBreakdownJSON, &c.EngineVersion, &c.RuleScore, &c.PresidioScore, &c.ContextScore, &c.EntropyScore,
 			&c.CreatedAt, &c.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
+		}
+
+		// Handle NULL retention_period
+		if retentionPeriod != nil {
+			c.RetentionPeriod = *retentionPeriod
 		}
 
 		if len(signalBreakdownJSON) > 0 {

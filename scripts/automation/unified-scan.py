@@ -19,7 +19,7 @@ except ImportError:
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../../"))
 
-CONNECTION_FILE = os.path.join(PROJECT_ROOT, "apps/scanner/config/strict_rules.yml")
+CONNECTION_FILE = os.path.join(PROJECT_ROOT, "apps/scanner/config/connection.yml")
 SCANNER_CMD = "hawk_scanner"  # Assumes it's in PATH
 BACKEND_URL = "http://localhost:8080/api/v1/scans/ingest"
 

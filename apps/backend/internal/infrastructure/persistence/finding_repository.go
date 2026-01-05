@@ -91,10 +91,13 @@ func (r *PostgresRepository) ListFindingsByAsset(ctx context.Context, assetID uu
 }
 
 func (r *PostgresRepository) ListFindings(ctx context.Context, filters repository.FindingFilters, limit, offset int) ([]*entity.Finding, error) {
+	// AUTO-EXCLUDE Non-PII: Join with classifications to filter out false positives
 	query := `
-		SELECT id, scan_run_id, asset_id, pattern_id, pattern_name, matches, sample_text, 
-			severity, severity_description, confidence_score, context, created_at, updated_at
-		FROM findings WHERE 1=1`
+		SELECT DISTINCT f.id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, 
+			f.severity, f.severity_description, f.confidence_score, f.context, f.created_at, f.updated_at
+		FROM findings f
+		LEFT JOIN classifications c ON f.id = c.finding_id
+		WHERE (c.classification_type IS NULL OR c.classification_type != 'Non-PII')`
 
 	args := []interface{}{}
 	argCount := 1
@@ -136,7 +139,12 @@ func (r *PostgresRepository) ListFindings(ctx context.Context, filters repositor
 }
 
 func (r *PostgresRepository) CountFindings(ctx context.Context, filters repository.FindingFilters) (int, error) {
-	query := `SELECT COUNT(*) FROM findings WHERE 1=1`
+	// AUTO-EXCLUDE Non-PII: Join with classifications to filter out false positives
+	query := `
+		SELECT COUNT(DISTINCT f.id) 
+		FROM findings f
+		LEFT JOIN classifications c ON f.id = c.finding_id
+		WHERE (c.classification_type IS NULL OR c.classification_type != 'Non-PII')`
 
 	args := []interface{}{}
 	argCount := 1

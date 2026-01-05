@@ -70,6 +70,21 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 		return nil, fmt.Errorf("no findings in scan input")
 	}
 
+	// BEGIN TRANSACTION - Critical fix for ING-001
+	tx, err := s.repo.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// Ensure rollback on panic or error
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			log.Printf("PANIC during ingestion, transaction rolled back: %v", r)
+			panic(r)
+		}
+	}()
+
 	// Combine findings
 	allFindings := append(input.FS, input.PostgreSQL...)
 
@@ -89,7 +104,8 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 		Metadata:        map[string]interface{}{},
 	}
 
-	if err := s.repo.CreateScanRun(ctx, scanRun); err != nil {
+	if err := tx.CreateScanRun(ctx, scanRun); err != nil {
+		tx.Rollback()
 		return nil, fmt.Errorf("failed to create scan run: %w", err)
 	}
 
@@ -100,15 +116,30 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 
 	// Process each finding
 	for _, hawkeyeFinding := range allFindings {
-		// Generate stable asset ID from file path
-		stableID := generateStableID(hawkeyeFinding.FilePath)
+		// Generate stable asset ID based on data source type
+		// For databases: use table name to create separate assets per table
+		// For files: use file path as before
+		var assetIdentifier string
+		if hawkeyeFinding.DataSource == "postgresql" || hawkeyeFinding.DataSource == "mysql" {
+			// Extract table name from path format: "connection string > schema.table.column"
+			tableName := extractTableName(hawkeyeFinding.FilePath)
+			assetIdentifier = fmt.Sprintf("%s::%s::%s",
+				hawkeyeFinding.DataSource,
+				hawkeyeFinding.Host,
+				tableName)
+		} else {
+			// For filesystem sources, use file path
+			assetIdentifier = hawkeyeFinding.FilePath
+		}
+		stableID := generateStableID(assetIdentifier)
 
 		// Check if asset already exists
 		assetID, exists := assetMap[stableID]
 		if !exists {
-			// Try to get existing asset from database
-			existingAsset, err := s.repo.GetAssetByStableID(ctx, stableID)
+			// Try to get existing asset from database (using transaction)
+			existingAsset, err := tx.GetAssetByStableID(ctx, stableID)
 			if err != nil {
+				tx.Rollback()
 				return nil, fmt.Errorf("failed to check existing asset: %w", err)
 			}
 
@@ -144,7 +175,8 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 					RiskScore:    calculateRiskScore(hawkeyeFinding.Severity),
 				}
 
-				if err := s.repo.CreateAsset(ctx, asset); err != nil {
+				if err := tx.CreateAsset(ctx, asset); err != nil {
+					tx.Rollback()
 					return nil, fmt.Errorf("failed to create asset: %w", err)
 				}
 
@@ -209,12 +241,15 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 		// RECOMMENDED: Filter Non-PII at ingestion time (60-80% DB size reduction)
 		// Alternative: Store all, filter at query time (allows threshold tuning)
 		// Current: Using ingestion-time filtering for production efficiency
-		if decision.Classification == "Non-PII" || decision.FinalScore < 0.45 {
-			// Skip low-confidence and Non-PII findings to prevent database bloat
-			// If you need retrospective tuning, comment this block and ensure
-			// query-time filtering is applied in finding_repository.go
-			continue
-		}
+		// TEMPORARILY DISABLED: Allow all findings through for dashboard visibility
+		/*
+			if decision.Classification == "Non-PII" || decision.FinalScore < 0.45 {
+				// Skip low-confidence and Non-PII findings to prevent database bloat
+				// If you need retrospective tuning, comment this block and ensure
+				// query-time filtering is applied in finding_repository.go
+				continue
+			}
+		*/
 
 		// Sanitize inputs for Postgres (remove null bytes) with logging
 		sanitizedMatches := make([]string, len(hawkeyeFinding.Matches))
@@ -265,6 +300,21 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 		// The database migration 000003_add_deduplication.up.sql adds:
 		// CREATE UNIQUE INDEX idx_findings_unique ON findings(asset_id, pattern_name, normalized_value_hash, scan_run_id)
 
+		// Calculate dynamic severity based on classification, confidence, and context
+		dynamicSeverity := calculateDynamicSeverity(
+			decision.Classification,
+			decision.ConfidenceLevel,
+			hawkeyeFinding.FileData,
+		)
+
+		// Calculate risk score for prioritization (0-100)
+		riskScore := calculateComprehensiveRiskScore(
+			decision.Classification,
+			decision.ConfidenceLevel,
+			hawkeyeFinding.FileData,
+			decision.FinalScore,
+		)
+
 		// Create finding with deduplication hash
 		finding := &entity.Finding{
 			ID:                  uuid.New(),
@@ -274,8 +324,8 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			PatternName:         hawkeyeFinding.PatternName,
 			Matches:             sanitizedMatches,
 			SampleText:          sanitizedSample,
-			Severity:            hawkeyeFinding.Severity,
-			SeverityDescription: hawkeyeFinding.SeverityDescription,
+			Severity:            dynamicSeverity, // Now calculated from classification+confidence+context
+			SeverityDescription: fmt.Sprintf("Risk Score: %d/100 | %s", riskScore, decision.Justification),
 			ConfidenceScore:     &decision.FinalScore,
 			Context:             decision.SignalBreakdown,
 			EnrichmentSignals:   enrichmentMap,
@@ -288,13 +338,14 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 		// TODO: When entity.Finding has NormalizedValueHash field, uncomment above
 		// For now, the unique index will prevent true duplicates at DB level
 
-		if err := s.repo.CreateFinding(ctx, finding); err != nil {
+		if err := tx.CreateFinding(ctx, finding); err != nil {
 			// Check if error is due to duplicate (unique constraint violation)
 			if strings.Contains(err.Error(), "idx_findings_unique") {
 				// Duplicate detected - skip silently or log
 				log.Printf("DEBUG: Duplicate finding skipped for %s at %s", hawkeyeFinding.PatternName, hawkeyeFinding.FilePath)
 				continue
 			}
+			tx.Rollback()
 			return nil, fmt.Errorf("failed to create finding: %w", err)
 		}
 
@@ -310,7 +361,8 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			RequiresConsent:    decision.RequiresConsent,
 		}
 
-		if err := s.repo.CreateClassification(ctx, classification); err != nil {
+		if err := tx.CreateClassification(ctx, classification); err != nil {
+			tx.Rollback()
 			return nil, fmt.Errorf("failed to create classification: %w", err)
 		}
 
@@ -321,7 +373,8 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			Status:    "pending",
 		}
 
-		if err := s.repo.CreateReviewState(ctx, reviewState); err != nil {
+		if err := tx.CreateReviewState(ctx, reviewState); err != nil {
+			tx.Rollback()
 			return nil, fmt.Errorf("failed to create review state: %w", err)
 		}
 	}
@@ -349,10 +402,15 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 
 			// Sync to Neo4j if semantic lineage is enabled
 			if s.semanticLineage != nil {
+				log.Printf("INFO: Syncing asset %s to Neo4j semantic graph", assetID)
 				if err := s.semanticLineage.SyncAssetToNeo4j(ctx, assetID); err != nil {
 					// Log but don't fail ingestion (graceful degradation)
-					fmt.Printf("WARNING: Failed to sync asset %s to Neo4j: %v\n", assetID, err)
+					log.Printf("WARNING: Failed to sync asset %s to Neo4j: %v", assetID, err)
+				} else {
+					log.Printf("SUCCESS: Asset %s synced to Neo4j", assetID)
 				}
+			} else {
+				log.Printf("INFO: Neo4j semantic lineage is disabled - skipping sync for asset %s", assetID)
 			}
 		}
 	}
@@ -360,8 +418,14 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 	// Update scan run totals
 	scanRun.TotalFindings = len(allFindings)
 	scanRun.TotalAssets = len(assetMap)
-	if err := s.repo.UpdateScanRun(ctx, scanRun); err != nil {
+	if err := tx.UpdateScanRun(ctx, scanRun); err != nil {
+		tx.Rollback()
 		return nil, fmt.Errorf("failed to update scan run: %w", err)
+	}
+
+	// CRITICAL FIX: Commit the transaction to persist all changes
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return &IngestScanResult{
@@ -501,9 +565,36 @@ func (s *IngestionService) getOrCreatePattern(ctx context.Context, finding *Hawk
 	return pattern.ID, nil
 }
 
-// generateStableID creates a stable identifier from file path
-func generateStableID(filePath string) string {
-	hash := sha256.Sum256([]byte(filePath))
+// extractTableName extracts table name from database finding path
+// Path format: "connection string > schema.table.column" or "connection string > table.column"
+func extractTableName(filePath string) string {
+	// Split by '>' to separate connection from table path
+	parts := strings.Split(filePath, ">")
+	if len(parts) < 2 {
+		return filePath
+	}
+
+	// Get the table part and trim whitespace
+	tablePart := strings.TrimSpace(parts[1])
+
+	// Split by '.' to get schema.table.column
+	dotParts := strings.Split(tablePart, ".")
+
+	if len(dotParts) >= 2 {
+		// Return schema.table (ignore column)
+		return fmt.Sprintf("%s.%s", dotParts[0], dotParts[1])
+	}
+
+	// Fallback to full table part if format is unexpected
+	return tablePart
+}
+
+// generateStableID creates a stable identifier from asset identifier
+func generateStableID(identifier string) string {
+	// FIX ING-003: Normalize to prevent duplicates on case-insensitive systems
+	// Convert to lowercase to prevent duplicates on macOS/Windows
+	normalizedPath := strings.ToLower(identifier)
+	hash := sha256.Sum256([]byte(normalizedPath))
 	return hex.EncodeToString(hash[:])
 }
 
@@ -572,4 +663,153 @@ func (h *HawkeyeScanInput) MarshalJSON() ([]byte, error) {
 // GetLatestScan returns the most recent scan run
 func (s *IngestionService) GetLatestScan(ctx context.Context) (*entity.ScanRun, error) {
 	return s.repo.GetLatestScanRun(ctx)
+}
+
+// calculateDynamicSeverity determines severity based on classification, confidence, and environment
+// This creates coherence between severity, classification, and confidence for better interpretability
+func calculateDynamicSeverity(classification, confidence string, fileData map[string]interface{}) string {
+	// Determine if this is production environment
+	isProduction := isProductionEnvironment(fileData)
+
+	// Apply decision matrix: Classification + Confidence + Context = Severity
+	switch classification {
+	case "Sensitive Personal Data":
+		// SSN, PAN, Aadhaar, Credit Cards, etc.
+		if confidence == "CONFIRMED" && isProduction {
+			return "Critical"
+		}
+		if confidence == "CONFIRMED" || (confidence == "HIGH_CONFIDENCE" && isProduction) {
+			return "High"
+		}
+		if isProduction {
+			return "High"
+		}
+		return "Medium"
+
+	case "Personal Data":
+		// Email, Phone, etc.
+		if confidence == "CONFIRMED" && isProduction {
+			return "Medium"
+		}
+		if isProduction {
+			return "Low"
+		}
+		return "Low"
+
+	case "Secrets":
+		// API Keys, AWS Keys, etc.
+		if confidence == "CONFIRMED" && isProduction {
+			return "Critical"
+		}
+		if isProduction {
+			return "High"
+		}
+		return "Medium"
+
+	default:
+		// Non-PII or unknown
+		return "Info"
+	}
+}
+
+// isProductionEnvironment determines if data is from production environment
+func isProductionEnvironment(fileData map[string]interface{}) bool {
+	if fileData == nil {
+		return true // Default to production if unknown (safer)
+	}
+
+	// Check environment field
+	if env, ok := fileData["environment"].(string); ok {
+		envLower := strings.ToLower(env)
+		// Non-production indicators
+		if strings.Contains(envLower, "test") ||
+			strings.Contains(envLower, "dev") ||
+			strings.Contains(envLower, "staging") ||
+			strings.Contains(envLower, "qa") ||
+			strings.Contains(envLower, "sandbox") {
+			return false
+		}
+	}
+
+	// Check database/schema names for test indicators
+	if dbName, ok := fileData["database"].(string); ok {
+		dbLower := strings.ToLower(dbName)
+		if strings.Contains(dbLower, "test") || strings.Contains(dbLower, "dev") {
+			return false
+		}
+	}
+
+	// Default to production
+	return true
+}
+
+// calculateComprehensiveRiskScore provides numeric risk score (0-100) for sorting and prioritization
+// Combines classification sensitivity, confidence level, and environment context
+func calculateComprehensiveRiskScore(classification, confidence string, fileData map[string]interface{}, finalScore float64) int {
+	// Base weights for classification types
+	var classificationWeight float64
+	switch classification {
+	case "Sensitive Personal Data":
+		classificationWeight = 100.0
+	case "Secrets":
+		classificationWeight = 90.0
+	case "Personal Data":
+		classificationWeight = 50.0
+	default:
+		classificationWeight = 10.0
+	}
+
+	// Confidence multiplier
+	var confidenceMultiplier float64
+	switch confidence {
+	case "CONFIRMED":
+		confidenceMultiplier = 1.0
+	case "HIGH_CONFIDENCE":
+		confidenceMultiplier = 0.75
+	case "VALIDATED":
+		confidenceMultiplier = 0.5
+	default:
+		confidenceMultiplier = 0.3
+	}
+
+	// Environment context multiplier
+	contextMultiplier := 1.0
+	if !isProductionEnvironment(fileData) {
+		contextMultiplier = 0.3 // Test/dev data is 70% less critical
+	}
+
+	// Calculate weighted score
+	// Formula: (ClassWeight * 0.6) + (Confidence * 20) + (Context * 20)
+	// This ensures classification type dominates, but confidence/context can adjust prioritization
+	
+	baseScore := classificationWeight * 0.6
+	confidenceScore := (confidenceMultiplier * 100) * 0.2
+	contextScore := (contextMultiplier * 100) * 0.2
+	
+	totalScore := int(baseScore + confidenceScore + contextScore)
+	
+	// Ensure bounds 0-100
+	if totalScore > 100 {
+		return 100
+	}
+	if totalScore < 0 {
+		return 0
+	}
+	
+	return totalScore
+}
+
+// ClearAllScanData deletes all previous scan data for clean scan-replace workflow  
+func (s *IngestionService) ClearAllScanData(ctx context.Context) error {
+	log.Println("Clearing all previous scan data...")
+	_, err := s.repo.GetDB().ExecContext(ctx, `
+		TRUNCATE findings, assets, classifications, 
+		asset_relationships, review_states, scan_runs, finding_feedback 
+		CASCADE
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to clear scan data: %w", err)
+	}
+	log.Println("✅ All previous scan data cleared successfully")
+	return nil
 }

@@ -92,18 +92,20 @@ func main() {
 	// Create Presidio client
 	presidioClient := service.NewPresidioClient(presidioURL, true) // always enabled
 
-	// Health check - CRITICAL: Fail fast if Presidio is down
+	// Health check - GRACEFUL DEGRADATION: Fall back to rules-only if Presidio unavailable
 	healthCtx, healthCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer healthCancel()
 
 	if err := presidioClient.HealthCheck(healthCtx); err != nil {
-		log.Fatalf("❌ CRITICAL: Presidio is MANDATORY but health check failed: %v\nEnsure Presidio is running at %s", err, presidioURL)
+		log.Printf("⚠️ WARNING: Presidio ML service unavailable - falling back to rules-only classification mode")
+		log.Printf("   Error: %v", err)
+		log.Printf("   Expected location: %s", presidioURL)
+		log.Printf("   Classification will continue with reduced ML confidence (pattern matching + context only)")
+		classificationService.SetPresidioClient(nil) // Disable ML signal, enable rules-only mode
+	} else {
+		log.Printf("✅ Presidio ML connected and healthy at %s", presidioURL)
+		classificationService.SetPresidioClient(presidioClient)
 	}
-
-	log.Printf("✅ Presidio connected and healthy at %s", presidioURL)
-
-	// Inject Presidio into classification service
-	classificationService.SetPresidioClient(presidioClient)
 
 	// Neo4j configuration (optional - needed for semantic graph)
 	neo4jEnabled := os.Getenv("NEO4J_ENABLED")
@@ -122,17 +124,23 @@ func main() {
 
 	// Create semantic lineage service (required by ingestion)
 	var semanticLineageService *service.SemanticLineageService
+	log.Printf("Neo4j Configuration: ENABLED=%s, URI=%s, USER=%s", neo4jEnabled, neo4jURI, neo4jUsername)
+
 	if neo4jEnabled == "true" {
+		log.Printf("Attempting to connect to Neo4j at %s...", neo4jURI)
 		neo4jRepo, err := persistence.NewNeo4jRepository(neo4jURI, neo4jUsername, neo4jPassword)
 		if err != nil {
-			log.Printf("WARNING: Neo4j connection failed: %v (falling back to PostgreSQL)", err)
+			log.Printf("❌ WARNING: Neo4j connection failed: %v", err)
+			log.Printf("   Falling back to PostgreSQL-only lineage (Neo4j features will be unavailable)")
 			semanticLineageService = service.NewSemanticLineageService(nil, repo)
 		} else {
-			log.Println("✅ Neo4j semantic lineage enabled at", neo4jURI)
+			log.Printf("✅ Neo4j semantic lineage ENABLED at %s", neo4jURI)
+			log.Printf("   Assets will be synced to Neo4j graph during ingestion")
 			semanticLineageService = service.NewSemanticLineageService(neo4jRepo, repo)
 		}
 	} else {
-		log.Println("Neo4j disabled - using PostgreSQL-only lineage")
+		log.Printf("ℹ️  Neo4j DISABLED (set NEO4J_ENABLED=true to enable)")
+		log.Printf("   Using PostgreSQL-only lineage (relational graph)")
 		semanticLineageService = service.NewSemanticLineageService(nil, repo)
 	}
 

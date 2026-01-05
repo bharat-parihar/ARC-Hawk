@@ -88,3 +88,20 @@ func (h *IngestionHandler) GetLatestScan(c *gin.Context) {
 func (h *IngestionHandler) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct{}{})
 }
+
+// ClearScanData handles DELETE /api/v1/scans/clear
+// Clears all previous scan data for clean scan-replace workflow
+func (h *IngestionHandler) ClearScanData(c *gin.Context) {
+	err := h.service.ClearAllScanData(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to clear scan data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Previous scan data cleared successfully",
+	})
+}

@@ -19,30 +19,85 @@ def connect_postgresql(args, host, port, user, password, database):
     except Exception as e:
         system.print_error(args, f"Failed to connect to PostgreSQL database at {host} with error: {e}")
 
-def check_data_patterns(args, conn, patterns, profile_name, database_name, limit_start=0, limit_end=500, whitelisted_tables=None):
+def check_data_patterns(args, conn, patterns, profile_name, database_name, limit_start=0, limit_end=None, whitelisted_tables=None, schemas=None):
     cursor = conn.cursor()
     
-    # Get the list of tables to scan
-    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
-    all_tables = [table[0] for table in cursor.fetchall()]
-    if whitelisted_tables:
-        tables_to_scan = [table for table in all_tables if table in whitelisted_tables]
+    # Determine schemas to scan
+    if schemas:
+        # User specified schemas
+        schema_list = schemas if isinstance(schemas, list) else [schemas]
+        schema_clause = f"table_schema IN ({','.join(['%s'] * len(schema_list))})"
+        cursor.execute(f"SELECT table_schema, table_name FROM information_schema.tables WHERE {schema_clause}", schema_list)
     else:
-        tables_to_scan = all_tables or []
-
-    table_count = 1
+        # Scan all user schemas (exclude system schemas)
+        cursor.execute("""
+            SELECT table_schema, table_name 
+            FROM information_schema.tables 
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+        """)
+    
+    all_tables = [(row[0], row[1]) for row in cursor.fetchall()]
+    
+    # AUTO-EXCLUDE: ARC-Hawk system tables and common framework tables
+    # This prevents scanning the platform's own metadata tables
+    EXCLUDED_TABLES = {
+        # ARC-Hawk platform tables (don't scan our own scan results!)
+        'patterns', 'findings', 'assets', 'classifications',
+        'asset_relationships', 'review_states', 'scan_runs',
+        # Common migration/framework tables
+        'schema_migrations', 'goose_db_version', 'flyway_schema_history',
+        'knex_migrations', 'knex_migrations_lock',
+        # PostgreSQL extension tables
+        'pg_stat_statements', 'spatial_ref_sys',
+    }
+    
+    # Filter out excluded tables
+    filtered_tables = [
+        (schema, table) for schema, table in all_tables 
+        if table.lower() not in EXCLUDED_TABLES
+    ]
+    
+    excluded_count = len(all_tables) - len(filtered_tables)
+    if excluded_count > 0:
+        system.print_info(args, f"ℹ️  Skipped {excluded_count} system/framework tables")
+    
+    # Use filtered tables for subsequent operations
+    all_tables = filtered_tables
+    
+    # Filter by whitelisted tables if specified
+    if whitelisted_tables:
+        tables_to_scan = [(schema, table) for schema, table in all_tables if table in whitelisted_tables]
+    else:
+        tables_to_scan = all_tables
 
     results = []
-    for table in tables_to_scan:
-        if table not in all_tables:
-            system.print_error(args, f"Table {table} not found in the database. Skipping.")
-            continue
-
-        cursor.execute(f"SELECT * FROM {table} LIMIT {limit_end} OFFSET {limit_start}")
+    total_rows_scanned = 0
+    
+    for schema, table in tables_to_scan:
+        qualified_table = f'"{schema}"."{table}"'
+        
+        # Check row count for this table
+        cursor.execute(f"SELECT COUNT(*) FROM {qualified_table}")
+        table_row_count = cursor.fetchone()[0]
+        
+        # Warn if table is large and no limit set
+        if table_row_count > 10000 and limit_end is None:
+            system.print_info(args, f"⚠️  Scanning large table {qualified_table} ({table_row_count:,} rows) - this may take time")
+        
+        # Build query with optional limit
+        if limit_end is not None:
+            query = f"SELECT * FROM {qualified_table} LIMIT {limit_end} OFFSET {limit_start}"
+            system.print_info(args, f"Scanning {qualified_table} (LIMIT {limit_end}, OFFSET {limit_start})")
+        else:
+            query = f"SELECT * FROM {qualified_table}"
+            system.print_info(args, f"Scanning {qualified_table} (all {table_row_count:,} rows)")
+        
+        cursor.execute(query)
         columns = [column[0] for column in cursor.description]
 
-        data_count = 1
+        row_count = 0
         for row in cursor.fetchall():
+            row_count += 1
             for column, value in zip(columns, row):
                 if value:
                     value_str = str(value)
@@ -52,6 +107,7 @@ def check_data_patterns(args, conn, patterns, profile_name, database_name, limit
                             results.append({
                                 'host': conn.dsn,
                                 'database': database_name,
+                                'schema': schema,  # NEW: Track schema
                                 'table': table,
                                 'column': column,
                                 'pattern_name': match['pattern_name'],
@@ -60,12 +116,11 @@ def check_data_patterns(args, conn, patterns, profile_name, database_name, limit
                                 'profile': profile_name,
                                 'data_source': 'postgresql'
                             })
-
-            data_count += 1
-
-        table_count += 1
+        
+        total_rows_scanned += row_count
 
     cursor.close()
+    system.print_success(args, f"✅ Scanned {total_rows_scanned:,} rows across {len(tables_to_scan)} tables")
     return results
 
 def execute(args):
@@ -87,14 +142,26 @@ def execute(args):
                 password = config.get('password')
                 database = config.get('database')
                 limit_start = config.get('limit_start', 0)
-                limit_end = config.get('limit_end', 500)
+                limit_end = config.get('limit_end', None)  # NEW: Default to None (unlimited)
                 tables = config.get('tables', [])
+                schemas = config.get('schemas', None)  # NEW: Optional schema list
 
                 if host and user and password and database:
                     system.print_info(args, f"Checking PostgreSQL Profile {key}, database {database}")
+                    
+                    # Warn if limit is set
+                    if limit_end is not None:
+                        system.print_info(args, f"⚠️  Row limit active: scanning only {limit_end} rows per table")
+                    
                     conn = connect_postgresql(args, host, port, user, password, database)
                     if conn:
-                        results += check_data_patterns(args, conn, patterns, key, database, limit_start=limit_start, limit_end=limit_end, whitelisted_tables=tables)
+                        results += check_data_patterns(
+                            args, conn, patterns, key, database, 
+                            limit_start=limit_start, 
+                            limit_end=limit_end, 
+                            whitelisted_tables=tables,
+                            schemas=schemas  # NEW: Pass schemas
+                        )
                         conn.close()
                 else:
                     system.print_error(args, f"Incomplete PostgreSQL configuration for key: {key}")

@@ -33,6 +33,11 @@
   - **Purpose**: Get scan run status
   - **Response**: Scan metadata and progress
 
+- **GET** `/api/v1/scans/last`
+  - **Purpose**: Get the most recent scan run
+  - **Response**: Latest scan metadata and statistics
+  - **Frontend Usage**: Dashboard last scan card
+
 #### 3. Classification
 - **GET** `/api/v1/classification/summary`
   - **Purpose**: Get aggregated PII classification statistics
