@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Topbar from '@/components/Topbar';
 import SummaryCards from '@/components/SummaryCards';
 import FindingsTable from '@/components/FindingsTable';
@@ -23,6 +23,7 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [scanTime, setScanTime] = useState<string | undefined>(undefined);
+    const [lastScanId, setLastScanId] = useState<string | null>(null);
 
     // Filters and pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -30,13 +31,43 @@ export default function DashboardPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [severityFilter, setSeverityFilter] = useState('');
 
+    // Auto-refresh polling
+    const pollingInterval = useRef<NodeJS.Timeout | null>(null);
+
     useEffect(() => {
         fetchData();
+
+        // Start auto-polling for new scan data every 10 seconds
+        pollingInterval.current = setInterval(() => {
+            checkForNewScan();
+        }, 10000); // Poll main page API every 10s
+
+        return () => {
+            if (pollingInterval.current) {
+                clearInterval(pollingInterval.current);
+            }
+        };
     }, []);
 
     useEffect(() => {
         fetchFindings();
     }, [currentPage, searchQuery, severityFilter]);
+
+    const checkForNewScan = async () => {
+        try {
+            const lastScan = await scansApi.getLastScanRun();
+            if (lastScan && lastScan.id !== lastScanId) {
+                // New scan detected! Auto-refresh all data
+                console.log('New scan detected, refreshing data...');
+                setLastScanId(lastScan.id);
+                await fetchData();
+                await fetchFindings();
+            }
+        } catch (err) {
+            // Silently fail polling, don't disrupt UX
+            console.debug('Polling check failed:', err);
+        }
+    };
 
     const fetchData = async () => {
         try {
@@ -53,6 +84,7 @@ export default function DashboardPage() {
             setClassificationSummary(classification);
             if (lastScan) {
                 setScanTime(lastScan.scan_completed_at);
+                setLastScanId(lastScan.id);
             }
         } catch (err: any) {
             console.error('Error fetching data:', err);
@@ -128,31 +160,56 @@ export default function DashboardPage() {
 
             <div style={{ padding: '20px', maxWidth: '1800px', margin: '0 auto' }}>
                 <div style={{ marginBottom: '32px' }}>
-                    <h1 style={{
-                        fontSize: '32px',
-                        fontWeight: 800,
-                        color: colors.text.primary,
-                        marginBottom: '8px',
-                        letterSpacing: '-0.02em',
-                    }}>
-                        Risk Overview
-                    </h1>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <p style={{ color: colors.text.secondary, fontSize: '16px', margin: 0 }}>
-                            Executive summary of data privacy and security posture.
-                        </p>
-                        <span style={{
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                            <h1 style={{
+                                fontSize: '32px',
+                                fontWeight: 800,
+                                color: colors.text.primary,
+                                marginBottom: '8px',
+                                letterSpacing: '-0.02em',
+                            }}>
+                                Risk Overview
+                            </h1>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <p style={{ color: colors.text.secondary, fontSize: '16px', margin: 0 }}>
+                                    Executive summary of data privacy and security posture.
+                                </p>
+                                <span style={{
+                                    fontSize: '12px',
+                                    color: colors.text.secondary,
+                                    background: colors.background.surface,
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    border: `1px solid ${colors.border.default}`
+                                }}>
+                                    Live Data
+                                </span>
+                            </div>
+                        </div>
+                        {/* Auto-refresh indicator */}
+                        <div style={{
                             fontSize: '12px',
-                            color: colors.text.secondary,
-                            background: colors.background.surface,
-                            padding: '2px 8px',
-                            borderRadius: '12px',
-                            border: `1px solid ${colors.border.default}`
+                            color: '#10b981',
+                            background: '#d1fae5',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            border: '1px solid #6ee7b7'
                         }}>
-                            Live Data
-                        </span>
+                            <div style={{
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                background: '#10b981',
+                                animation: 'pulse 2s infinite'
+                            }} />
+                            Auto-refreshing
+                        </div>
                     </div>
-                    <p style={{ color: colors.text.secondary, fontSize: '16px', maxWidth: '800px' }}>
+                    <p style={{ color: colors.text.secondary, fontSize: '16px', maxWidth: '800px', marginTop: '12px' }}>
                         Your environment has <strong>{criticalFindings} critical issues</strong> that require immediate attention.
                         We analyzed <strong>{totalFindings} detections</strong> spanning <strong>{sensitivePIICount} confirmed sensitive items</strong>.
                     </p>
@@ -178,7 +235,7 @@ export default function DashboardPage() {
                     criticalFindings={criticalFindings}
                 />
 
-                {/* Full-width Findings Table (Sidebar removed for clean view) */}
+                {/* Full-width Findings Table */}
                 <div style={{ marginTop: '32px' }}>
                     <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>Recent Critical Findings</h2>
@@ -198,6 +255,13 @@ export default function DashboardPage() {
                     )}
                 </div>
             </div>
+
+            <style jsx global>{`
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                }
+            `}</style>
         </div>
     );
 }
