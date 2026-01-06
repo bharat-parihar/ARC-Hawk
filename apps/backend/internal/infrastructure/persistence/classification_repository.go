@@ -72,6 +72,8 @@ func (r *PostgresRepository) GetClassificationsByFindingID(ctx context.Context, 
 		// Handle NULL retention_period
 		if retentionPeriod != nil {
 			c.RetentionPeriod = *retentionPeriod
+		} else {
+			c.RetentionPeriod = "" // Default to empty string if NULL
 		}
 
 		if len(signalBreakdownJSON) > 0 {
