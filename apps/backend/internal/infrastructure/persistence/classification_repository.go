@@ -87,13 +87,14 @@ func (r *PostgresRepository) GetClassificationsByFindingID(ctx context.Context, 
 }
 
 func (r *PostgresRepository) GetClassificationSummary(ctx context.Context) (map[string]interface{}, error) {
-	// Query classification types
+	// Query classification types (AUTO-EXCLUDE Non-PII for clean dashboard stats)
 	query := `
 		SELECT 
 			classification_type, 
 			COUNT(*) as count,
 			AVG(confidence_score) as avg_confidence
 		FROM classifications
+		WHERE classification_type != 'Non-PII'
 		GROUP BY classification_type`
 
 	rows, err := r.db.QueryContext(ctx, query)
@@ -122,13 +123,15 @@ func (r *PostgresRepository) GetClassificationSummary(ctx context.Context) (map[
 
 	summary["by_type"] = typeBreakdown
 
-	// Query severity breakdown
+	// Query severity breakdown (use filtered findings via JOIN)
 	severityQuery := `
 		SELECT 
-			severity, 
-			COUNT(*) as count
-		FROM findings
-		GROUP BY severity`
+			f.severity, 
+			COUNT(DISTINCT f.id) as count
+		FROM findings f
+		LEFT JOIN classifications c ON f.id = c.finding_id
+		WHERE (c.classification_type IS NULL OR c.classification_type != 'Non-PII')
+		GROUP BY f.severity`
 
 	severityRows, err := r.db.QueryContext(ctx, severityQuery)
 	if err != nil {
@@ -147,9 +150,9 @@ func (r *PostgresRepository) GetClassificationSummary(ctx context.Context) (map[
 	}
 	summary["by_severity"] = severityBreakdown
 
-	// Get total count
+	// Get total count (exclude Non-PII for accurate dashboard display)
 	var total int
-	err = r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM classifications").Scan(&total)
+	err = r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM classifications WHERE classification_type != 'Non-PII'").Scan(&total)
 	if err != nil {
 		return nil, err
 	}
