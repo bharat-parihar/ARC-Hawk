@@ -26,7 +26,7 @@ export default function DashboardPage() {
     const [error, setError] = useState<string | null>(null);
 
     // Graph state
-    const [graphMode, setGraphMode] = useState<'lineage' | 'semantic'>('semantic');
+    const [graphMode, setGraphMode] = useState<'lineage' | 'semantic'>('lineage');
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
 
