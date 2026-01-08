@@ -513,19 +513,77 @@ func luhnValidate(number string) bool {
 	return sum%10 == 0
 }
 
-// Inline Verhoeff validator (simplified - use pkg/validation for full implementation)
+// Verhoeff Algorithm Tables
+var (
+	// Multiplication table (dihedral group D5)
+	verhoeffMultiplication = [10][10]int{
+		{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		{1, 2, 3, 4, 0, 6, 7, 8, 9, 5},
+		{2, 3, 4, 0, 1, 7, 8, 9, 5, 6},
+		{3, 4, 0, 1, 2, 8, 9, 5, 6, 7},
+		{4, 0, 1, 2, 3, 9, 5, 6, 7, 8},
+		{5, 9, 8, 7, 6, 0, 4, 3, 2, 1},
+		{6, 5, 9, 8, 7, 1, 0, 4, 3, 2},
+		{7, 6, 5, 9, 8, 2, 1, 0, 4, 3},
+		{8, 7, 6, 5, 9, 3, 2, 1, 0, 4},
+		{9, 8, 7, 6, 5, 4, 3, 2, 1, 0},
+	}
+
+	// Permutation table
+	verhoeffPermutation = [8][10]int{
+		{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		{1, 5, 7, 6, 2, 8, 3, 0, 9, 4},
+		{5, 8, 0, 3, 7, 9, 6, 1, 4, 2},
+		{8, 9, 1, 6, 0, 4, 3, 5, 2, 7},
+		{9, 4, 5, 3, 1, 2, 6, 8, 7, 0},
+		{4, 2, 8, 6, 5, 7, 3, 9, 0, 1},
+		{2, 7, 9, 3, 8, 0, 6, 4, 1, 5},
+		{7, 0, 4, 6, 9, 1, 3, 2, 5, 8},
+	}
+
+	// Inverse table
+	verhoeffInverse = [10]int{0, 4, 3, 2, 1, 5, 6, 7, 8, 9}
+)
+
+// verhoeffValidate performs full Verhoeff checksum validation for Aadhaar numbers
 func verhoeffValidate(number string) bool {
-	// For now, just check length and format
-	// Full Verhoeff implementation in pkg/validation/verhoeff.go
 	if len(number) != 12 {
 		return false
 	}
+
+	// Validate all characters are digits
 	for _, c := range number {
 		if c < '0' || c > '9' {
 			return false
 		}
 	}
-	return true // Simplified for now
+
+	// Calculate Verhoeff checksum
+	checksum := 0
+
+	// Process digits from right to left
+	for i, digit := range reverseString(number) {
+		digitValue := int(digit - '0')
+
+		// Get permutation based on position (modulo 8)
+		permutationRow := i % 8
+		permutedDigit := verhoeffPermutation[permutationRow][digitValue]
+
+		// Apply multiplication table
+		checksum = verhoeffMultiplication[checksum][permutedDigit]
+	}
+
+	// Valid if checksum is 0
+	return checksum == 0
+}
+
+// reverseString helper for Verhoeff algorithm
+func reverseString(s string) string {
+	runes := []rune(s)
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+	return string(runes)
 }
 
 // Inline PAN validator

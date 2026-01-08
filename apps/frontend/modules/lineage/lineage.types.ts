@@ -1,110 +1,83 @@
-/**
- * Lineage Module Type Definitions
- */
+// Lineage Graph Types - Phase 3: 4-Level Hierarchy
 
-// ============================================
-// NODE TYPES
-// ============================================
-
-export type NodeType = 'system' | 'asset' | 'file' | 'table' | 'data_category' | 'category' | 'finding' | 'classification';
+export type NodeType = 'system' | 'asset' | 'data_category' | 'pii_type';
 
 export interface BaseNode {
     id: string;
     label: string;
     type: NodeType;
-    risk_score: number;
     metadata: Record<string, any>;
-    parent_id?: string;
-    review_status?: 'pending' | 'confirmed' | 'false_positive';
 }
 
-export interface NodeData extends BaseNode {
-    expanded: boolean;
-    childCount?: number;
-    onExpand?: () => void;
+export interface SystemNode extends BaseNode {
+    type: 'system';
+    metadata: {
+        host?: string;
+    };
 }
 
-// ============================================
-// EDGE TYPES
-// ============================================
+export interface AssetNode extends BaseNode {
+    type: 'asset';
+    metadata: {
+        path?: string;
+        environment?: string;
+        risk_score?: number;
+    };
+}
 
-export type EdgeType =
-    | 'CONTAINS'
-    | 'HAS'
-    | 'EXPOSES'
-    | 'CLASSIFIED_AS'
-    | 'FLOWS_TO'
-    | 'DEPENDS_ON';
+export interface DataCategoryNode extends BaseNode {
+    type: 'data_category';
+    metadata: {
+        finding_count?: number;
+        risk_level?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+        avg_confidence?: number;
+    };
+}
 
-export interface BaseEdge {
+export interface PIITypeNode extends BaseNode {
+    type: 'pii_type';
+    metadata: {
+        count?: number;
+        max_risk?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+        max_confidence?: number;
+    };
+}
+
+export type LineageNode = SystemNode | AssetNode | DataCategoryNode | PIITypeNode;
+
+export interface LineageEdge {
     id: string;
     source: string;
     target: string;
-    type: EdgeType;
-    label: string;
+    type: 'CONTAINS' | 'HAS_CATEGORY' | 'INCLUDES';
+    label?: string;
+    metadata?: Record<string, any>;
 }
 
-// ============================================
-// GRAPH STRUCTURES
-// ============================================
-
-export interface LineageGraph {
-    nodes: BaseNode[];
-    edges: BaseEdge[];
+export interface LineageGraphData {
+    nodes: LineageNode[];
+    edges: LineageEdge[];
 }
 
-export type SemanticGraph = LineageGraph;
-
-// ============================================
-// FILTERS
-// ============================================
-
-export interface LineageFilters {
-    source?: string;
-    severity?: string;
-    data_type?: string;
-    asset_id?: string;
-    level?: string;
-    system?: string;      // For sidebar filter
-    category?: string;    // For sidebar filter
-}
-
-export interface SemanticGraphFilters {
-    system_id?: string;
-    risk_level?: string;
-    category?: string;
-}
-
-// ============================================
-// LAYOUT CONFIGURATION (STRICT)
-// ============================================
-
-export interface LayoutConfig {
-    rankdir: 'LR' | 'TB' | 'RL' | 'BT';
-    nodesep: number;
-    ranksep: number;
-    edgesep: number;
-    marginx: number;
-    marginy: number;
-}
-
-// STRICT: Horizontal hierarchy to prevent vertical stacking
-export const DEFAULT_LAYOUT_CONFIG: LayoutConfig = {
-    rankdir: 'LR',      // Left-to-Right (horizontal flow)
-    nodesep: 80,        // Reduced vertical spacing (was 200) for compactness
-    ranksep: 180,       // Reduced horizontal spacing (was 250)
-    edgesep: 50,        // Reduced edge separation
-    marginx: 50,       // Canvas margin horizontal
-    marginy: 50,       // Canvas margin vertical
+// Visual layout configuration
+export const NODE_COLORS: Record<NodeType, string> = {
+    system: '#3b82f6',      // Blue
+    asset: '#10b981',       // Green
+    data_category: '#f59e0b', // Orange
+    pii_type: '#ef4444',    // Red
 };
 
-// ============================================
-// PERFORMANCE LIMITS
-// ============================================
+export const NODE_SIZES: Record<NodeType, number> = {
+    system: 60,
+    asset: 50,
+    data_category: 45,
+    pii_type: 40,
+};
 
-export const PERFORMANCE_LIMITS = {
-    MAX_VISIBLE_NODES: 100,
-    MAX_CHILDREN_PER_EXPAND: 50,
-    ZOOM_DETAIL_THRESHOLD: 0.75,
-    AUTO_COLLAPSE_THRESHOLD: 30,
-} as const;
+// Risk level colors
+export const RISK_COLORS = {
+    CRITICAL: '#dc2626',
+    HIGH: '#f97316',
+    MEDIUM: '#fbbf24',
+    LOW: '#4ade80',
+};

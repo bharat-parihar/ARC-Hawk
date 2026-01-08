@@ -1,0 +1,265 @@
+package service
+
+import (
+	"time"
+
+	"github.com/arc-platform/backend/internal/domain/entity"
+	"github.com/google/uuid"
+)
+
+// VerifiedFinding represents SDK-validated finding from Python scanner
+// Mirrors: apps/scanner/sdk/schema.py
+type VerifiedFinding struct {
+	PIIType          string                 `json:"pii_type"`
+	ValueHash        string                 `json:"value_hash"`
+	Source           SourceLocation         `json:"source"`
+	ValidatorsPassed []string               `json:"validators_passed"`
+	MLConfidence     float64                `json:"ml_confidence"`
+	ContextExcerpt   string                 `json:"context_excerpt"`
+	ContextKeywords  []string               `json:"context_keywords"`
+	SDKVersion       string                 `json:"sdk_version"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type SourceLocation struct {
+	AssetName string `json:"asset_name"`
+	AssetPath string `json:"asset_path"`
+	AssetType string `json:"asset_type"` // "file" | "database"
+	Line      int    `json:"line,omitempty"`
+	Column    string `json:"column,omitempty"`
+	TableName string `json:"table_name,omitempty"`
+}
+
+// SDKAdapter maps SDK findings to existing entity structures
+type SDKAdapter struct{}
+
+func NewSDKAdapter() *SDKAdapter {
+	return &SDKAdapter{}
+}
+
+// MapToAsset creates an Asset entity from SDK finding
+func (a *SDKAdapter) MapToAsset(vf *VerifiedFinding) *entity.Asset {
+	// Generate stable ID from path for deduplication
+	stableID := generateStableID(vf.Source.AssetPath)
+
+	return &entity.Asset{
+		ID:           uuid.New(),
+		StableID:     stableID,
+		AssetType:    vf.Source.AssetType,
+		Name:         vf.Source.AssetName,
+		Path:         vf.Source.AssetPath,
+		DataSource:   determineDataSource(vf.Source.AssetType),
+		Host:         "localhost", // Default, can be enhanced
+		Environment:  "production",
+		Owner:        "",
+		SourceSystem: "arc-hawk-scanner",
+		FileMetadata: map[string]interface{}{
+			"sdk_version":    vf.SDKVersion,
+			"scan_timestamp": time.Now().Unix(),
+		},
+		RiskScore:     0, // Calculated after classification
+		TotalFindings: 0, // Incremented separately
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+}
+
+// MapToFinding creates a Finding entity from SDK finding
+func (a *SDKAdapter) MapToFinding(vf *VerifiedFinding, scanRunID, assetID uuid.UUID) *entity.Finding {
+	severity := determineSeverity(vf.PIIType)
+
+	return &entity.Finding{
+		ID:                  uuid.New(),
+		ScanRunID:           scanRunID,
+		AssetID:             assetID,
+		PatternID:           nil, // Not using pattern table for SDK findings
+		PatternName:         vf.PIIType,
+		Matches:             []string{vf.ValueHash}, // Store hash, not raw value
+		SampleText:          vf.ContextExcerpt,
+		Severity:            severity,
+		SeverityDescription: getSeverityDescription(severity),
+		ConfidenceScore:     floatPtr(vf.MLConfidence),
+		Context: map[string]interface{}{
+			"keywords":   vf.ContextKeywords,
+			"excerpt":    vf.ContextExcerpt,
+			"line":       vf.Source.Line,
+			"column":     vf.Source.Column,
+			"table_name": vf.Source.TableName,
+		},
+		EnrichmentSignals: map[string]interface{}{
+			"validators_passed": vf.ValidatorsPassed,
+			"sdk_validated":     true,
+			"sdk_version":       vf.SDKVersion,
+		},
+		EnrichmentScore:  floatPtr(1.0), // SDK validation = high enrichment
+		EnrichmentFailed: false,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
+	}
+}
+
+// MapToClassification creates a Classification entity from SDK finding
+func (a *SDKAdapter) MapToClassification(vf *VerifiedFinding, findingID uuid.UUID) *entity.Classification {
+	classificationType := mapPIITypeToClassification(vf.PIIType)
+	dpdpaCategory := getDPDPACategory(vf.PIIType)
+
+	// Simplified scoring: SDK already validated
+	finalScore := 0.6*vf.MLConfidence + 0.25*calculateContextScore(vf.ContextKeywords) + 0.15*1.0
+
+	return &entity.Classification{
+		ID:                 uuid.New(),
+		FindingID:          findingID,
+		ClassificationType: classificationType,
+		SubCategory:        vf.PIIType,
+		ConfidenceScore:    finalScore,
+		Justification:      generateJustification(vf),
+		DPDPACategory:      dpdpaCategory,
+		RequiresConsent:    requiresConsent(vf.PIIType),
+		RetentionPeriod:    getRetentionPeriod(vf.PIIType),
+		SignalBreakdown: map[string]interface{}{
+			"rule_signal": map[string]interface{}{
+				"confidence":     0.0,
+				"weight":         0.0,
+				"weighted_score": 0.0,
+			},
+			"presidio_signal": map[string]interface{}{
+				"confidence":     vf.MLConfidence,
+				"weight":         0.6,
+				"weighted_score": 0.6 * vf.MLConfidence,
+				"explanation":    "SDK-validated with " + joinStrings(vf.ValidatorsPassed),
+			},
+			"context_signal": map[string]interface{}{
+				"confidence":     calculateContextScore(vf.ContextKeywords),
+				"weight":         0.25,
+				"weighted_score": 0.25 * calculateContextScore(vf.ContextKeywords),
+			},
+			"entropy_signal": map[string]interface{}{
+				"confidence":     0.0,
+				"weight":         0.0,
+				"weighted_score": 0.0,
+			},
+		},
+		EngineVersion: "sdk-v" + vf.SDKVersion,
+		RuleScore:     floatPtr(0.0),
+		PresidioScore: floatPtr(vf.MLConfidence),
+		ContextScore:  floatPtr(calculateContextScore(vf.ContextKeywords)),
+		EntropyScore:  floatPtr(0.0),
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+}
+
+// Helper functions - using existing generateStableID from ingestion_service.go
+
+func determineDataSource(assetType string) string {
+	if assetType == "database" {
+		return "PostgreSQL"
+	}
+	return "FileSystem"
+}
+
+func determineSeverity(piiType string) string {
+	criticalTypes := []string{"AADHAAR", "PAN", "CREDIT_CARD", "SSN"}
+	for _, ct := range criticalTypes {
+		if piiType == ct {
+			return "Critical"
+		}
+	}
+	return "High"
+}
+
+func getSeverityDescription(severity string) string {
+	descriptions := map[string]string{
+		"Critical": "Contains sensitive personal identifiers requiring immediate attention",
+		"High":     "Contains personal data requiring protection",
+		"Medium":   "Contains potentially sensitive information",
+		"Low":      "Contains general information",
+	}
+	return descriptions[severity]
+}
+
+func mapPIITypeToClassification(piiType string) string {
+	mapping := map[string]string{
+		"AADHAAR":      "Sensitive Personal Data",
+		"PAN":          "Sensitive Personal Data",
+		"CREDIT_CARD":  "Financial Data",
+		"SSN":          "Sensitive Personal Data",
+		"EMAIL":        "Personal Data",
+		"PHONE_NUMBER": "Personal Data",
+	}
+	if ct, ok := mapping[piiType]; ok {
+		return ct
+	}
+	return "Personal Data"
+}
+
+func getDPDPACategory(piiType string) string {
+	mapping := map[string]string{
+		"AADHAAR":      "Sensitive Personal Data",
+		"PAN":          "Financial Identifier",
+		"CREDIT_CARD":  "Financial Data",
+		"SSN":          "Government Identifier",
+		"EMAIL":        "Contact Information",
+		"PHONE_NUMBER": "Contact Information",
+	}
+	if cat, ok := mapping[piiType]; ok {
+		return cat
+	}
+	return "General Personal Data"
+}
+
+func requiresConsent(piiType string) bool {
+	sensitiveTypes := []string{"AADHAAR", "PAN", "SSN", "CREDIT_CARD"}
+	for _, st := range sensitiveTypes {
+		if piiType == st {
+			return true
+		}
+	}
+	return false
+}
+
+func getRetentionPeriod(piiType string) string {
+	if requiresConsent(piiType) {
+		return "7 years (financial/tax compliance)"
+	}
+	return "3 years (general data retention)"
+}
+
+func calculateContextScore(keywords []string) float64 {
+	if len(keywords) == 0 {
+		return 0.0
+	}
+	// Simple heuristic: more keywords = higher confidence
+	score := float64(len(keywords)) * 0.1
+	if score > 1.0 {
+		score = 1.0
+	}
+	return score
+}
+
+func generateJustification(vf *VerifiedFinding) string {
+	validators := joinStrings(vf.ValidatorsPassed)
+	if validators == "" {
+		validators = "pattern matching"
+	}
+	return "SDK-validated " + vf.PIIType + " using " + validators + " (confidence: " + formatFloat(vf.MLConfidence*100) + "%)"
+}
+
+func joinStrings(strs []string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += ", " + strs[i]
+	}
+	return result
+}
+
+func formatFloat(f float64) string {
+	return string(rune(int(f)))
+}
+
+func floatPtr(f float64) *float64 {
+	return &f
+}

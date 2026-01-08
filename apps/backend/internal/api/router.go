@@ -42,7 +42,12 @@ func NewRouter(
 }
 
 // SetupRoutes configures all routes and middleware
-func (r *Router) SetupRoutes(router *gin.Engine, allowedOrigins string) {
+func (r *Router) SetupRoutes(
+	router *gin.Engine,
+	allowedOrigins string,
+	sdkIngestHandler *SDKIngestHandler,
+	lineageHandlerV2 *LineageHandlerV2,
+) {
 	// CORS middleware
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{allowedOrigins},
@@ -73,12 +78,18 @@ func (r *Router) SetupRoutes(router *gin.Engine, allowedOrigins string) {
 			scans.POST("/ingest", r.ingestionHandler.IngestScan)
 			scans.GET("/latest", r.ingestionHandler.GetLatestScan)
 			scans.GET("/:id", r.ingestionHandler.GetScanStatus)
-// NEW: Clear previous scan data for clean scan-replace workflow
-scans.DELETE("/clear", r.ingestionHandler.ClearScanData)
+			scans.DELETE("/clear", r.ingestionHandler.ClearScanData)
+
+			// Phase 2: SDK-verified ingestion
+			scans.POST("/ingest-verified", sdkIngestHandler.IngestVerified)
 		}
 
-		// Lineage
-		v1.GET("/lineage", r.lineageHandler.GetLineage)
+		// Phase 3: Unified lineage (NEW - Neo4j only)
+		v1.GET("/lineage", lineageHandlerV2.GetLineage)
+		v1.GET("/lineage/stats", lineageHandlerV2.GetLineageStats)
+
+		// OLD lineage (keep for now during transition)
+		v1.GET("/lineage-old", r.lineageHandler.GetLineage)
 
 		// Semantic Graph (NEW - Aggregated Neo4j Graph)
 		graph := v1.Group("/graph")
