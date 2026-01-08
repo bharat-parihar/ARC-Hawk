@@ -53,15 +53,15 @@ func main() {
 
 	// Run database migrations using golang-migrate
 	migrationURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		os.Getenv("DATABASE_USER"),
-		os.Getenv("DATABASE_PASSWORD"),
-		os.Getenv("DATABASE_HOST"),
-		os.Getenv("DATABASE_PORT"),
-		os.Getenv("DATABASE_NAME"),
-		os.Getenv("DATABASE_SSLMODE"))
+		os.Getenv("DB_USER"),
+		os.Getenv("DB_PASSWORD"),
+		os.Getenv("DB_HOST"),
+		os.Getenv("DB_PORT"),
+		os.Getenv("DB_NAME"),
+		os.Getenv("DB_SSLMODE"))
 
 	m, err := migrate.New(
-		"file://migrations_versioned",
+		"file://../../migrations_versioned",
 		migrationURL)
 	if err != nil {
 		log.Fatalf("Failed to initialize migrations: %v", err)
@@ -86,7 +86,7 @@ func main() {
 	// MANDATORY: Presidio ML integration (Presidio-first architecture)
 	presidioURL := os.Getenv("PRESIDIO_URL")
 	if presidioURL == "" {
-		presidioURL = "http://localhost:5001" // Default
+		presidioURL = "http://127.0.0.1:5001" // Default (use IPv4)
 	}
 
 	// Create Presidio client
@@ -111,7 +111,7 @@ func main() {
 	neo4jEnabled := os.Getenv("NEO4J_ENABLED")
 	neo4jURI := os.Getenv("NEO4J_URI")
 	if neo4jURI == "" {
-		neo4jURI = "bolt://localhost:7687"
+		neo4jURI = "bolt://127.0.0.1:7687" // Use IPv4 to avoid ::1 issues
 	}
 	neo4jUsername := os.Getenv("NEO4J_USERNAME")
 	if neo4jUsername == "" {
@@ -151,6 +151,12 @@ func main() {
 	assetService := service.NewAssetService(repo)
 	datasetService := service.NewDatasetService(repo)
 
+	// Phase 2: SDK-verified ingestion handler
+	sdkIngestHandler := api.NewSDKIngestHandler(ingestionService)
+
+	// Phase 3: Unified lineage handler
+	lineageHandlerV2 := api.NewLineageHandlerV2(semanticLineageService)
+
 	// Initialize router
 	r := gin.Default()
 	apiRouter := api.NewRouter(
@@ -168,7 +174,7 @@ func main() {
 	if allowedOrigins == "" {
 		allowedOrigins = "http://localhost:3000"
 	}
-	apiRouter.SetupRoutes(r, allowedOrigins)
+	apiRouter.SetupRoutes(r, allowedOrigins, sdkIngestHandler, lineageHandlerV2)
 
 	// Server configuration
 	port := os.Getenv("PORT")
