@@ -23,7 +23,7 @@ export default function InfoPanel({ nodeId, nodeData, onClose }: InfoPanelProps)
     useEffect(() => {
         // If it's a System, Classification, or Finding node, we rely on nodeData, NOT the API
         // Findings MIGHT have an API but let's stick to metadata for now to avoid 404s
-        const isAsset = nodeData?.type === 'asset' || nodeData?.type === 'file' || nodeData?.type === 'table';
+        const isAsset = nodeData?.type === 'asset';
 
         if (!isAsset) {
             setLoading(false);
@@ -109,7 +109,7 @@ export default function InfoPanel({ nodeId, nodeData, onClose }: InfoPanelProps)
                         }}>
                             {nodeData?.type === 'system' ? '🏢' :
                                 nodeData?.type === 'asset' ? '📦' :
-                                    nodeData?.type === 'finding' ? '🔍' : '📋'}
+                                    nodeData?.type === 'data_category' ? '📁' : '🔑'}
                         </div>
                         <div>
                             <h2
@@ -184,7 +184,7 @@ export default function InfoPanel({ nodeId, nodeData, onClose }: InfoPanelProps)
                         </div>
                     )}
 
-                    {/* Generic Node View (for System, Finding, Classification) */}
+                    {/* Generic Node View (for System, Classification) */}
                     {!asset && nodeData && !loading && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             <Section title={nodeData.type || 'Node Details'}>
@@ -213,7 +213,7 @@ export default function InfoPanel({ nodeId, nodeData, onClose }: InfoPanelProps)
                                 </Section>
                             )}
 
-                            {nodeData.risk_score > 0 && (
+                            {nodeData.type === 'asset' && nodeData.metadata?.risk_score !== undefined && (
                                 <Section title="Risk Assessment">
                                     <PropertyRow
                                         label="Risk Score"
@@ -224,15 +224,15 @@ export default function InfoPanel({ nodeId, nodeData, onClose }: InfoPanelProps)
                                                     padding: '4px 12px',
                                                     borderRadius: theme.borderRadius.full,
                                                     backgroundColor:
-                                                        nodeData.risk_score >= 80 ? colors.red[100] :
-                                                            nodeData.risk_score >= 60 ? colors.amber[100] : colors.emerald[100],
+                                                        (nodeData.metadata.risk_score as number) >= 80 ? colors.red[100] :
+                                                            (nodeData.metadata.risk_score as number) >= 60 ? colors.amber[100] : colors.emerald[100],
                                                     color:
-                                                        nodeData.risk_score >= 80 ? colors.red[700] :
-                                                            nodeData.risk_score >= 60 ? colors.amber[700] : colors.emerald[700],
+                                                        (nodeData.metadata.risk_score as number) >= 80 ? colors.red[700] :
+                                                            (nodeData.metadata.risk_score as number) >= 60 ? colors.amber[700] : colors.emerald[700],
                                                     fontWeight: theme.fontWeight.bold,
                                                 }}
                                             >
-                                                {nodeData.risk_score}/100
+                                                {nodeData.metadata.risk_score}/100
                                             </div>
                                         }
                                     />
@@ -354,10 +354,10 @@ export default function InfoPanel({ nodeId, nodeData, onClose }: InfoPanelProps)
                         Close Panel
                     </button>
                 </div>
-            </div>
+            </div >
 
             {/* CSS for slide-in animation */}
-            <style jsx>{`
+            < style jsx > {`
         @keyframes slideIn {
           from {
             transform: translateX(100%);
@@ -366,7 +366,7 @@ export default function InfoPanel({ nodeId, nodeData, onClose }: InfoPanelProps)
             transform: translateX(0);
           }
         }
-      `}</style>
+      `}</style >
         </>
     );
 }

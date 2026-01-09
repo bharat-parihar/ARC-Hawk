@@ -353,3 +353,32 @@ func (s *SemanticLineageService) fallbackToPostgres(ctx context.Context, _ Seman
 		Edges: edges,
 	}, nil
 }
+
+// SyncLineage triggers a full synchronization of all assets to Neo4j
+func (s *SemanticLineageService) SyncLineage(ctx context.Context) error {
+	if s.neo4jRepo == nil {
+		return fmt.Errorf("neo4j repository not configured")
+	}
+
+	// 1. Get all assets
+	// Use a large limit for now, or implement pagination
+	assets, err := s.pgRepo.ListAssets(ctx, 10000, 0)
+	if err != nil {
+		return fmt.Errorf("failed to list assets: %w", err)
+	}
+
+	successCount := 0
+	errorCount := 0
+
+	for _, asset := range assets {
+		if err := s.SyncAssetToNeo4j(ctx, asset.ID); err != nil {
+			fmt.Printf("Error syncing asset %s: %v\n", asset.Name, err)
+			errorCount++
+		} else {
+			successCount++
+		}
+	}
+
+	fmt.Printf("Sync completed: %d assets synced, %d failed\n", successCount, errorCount)
+	return nil
+}

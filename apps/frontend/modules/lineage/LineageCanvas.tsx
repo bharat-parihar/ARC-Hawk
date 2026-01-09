@@ -12,19 +12,20 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
+import { getLayoutedElements } from './layout.utils';
+
 import {
     BaseNode,
-    BaseEdge,
+    LineageEdge,
 } from './lineage.types';
 import LineageNode from './LineageNode';
 import LineageLegend from './LineageLegend';
-import { useLineageGraph } from './useLineageGraph';
 import { colors } from '@/design-system/colors';
 import EmptyState from '@/components/EmptyState';
 
 interface LineageCanvasProps {
     nodes: BaseNode[];
-    edges: BaseEdge[];
+    edges: LineageEdge[];
     onNodeClick?: (nodeId: string) => void;
     focusedNodeId?: string | null;
 }
@@ -37,12 +38,26 @@ const nodeTypes = {
 function LineageCanvasContent({ nodes: graphNodes, edges: graphEdges, onNodeClick, focusedNodeId }: LineageCanvasProps) {
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-    // Use custom hook for graph logic
-    const { layoutedNodes, layoutedEdges } = useLineageGraph({
-        nodes: graphNodes,
-        edges: graphEdges,
-        focusedNodeId
-    });
+    // Calculate layout
+    const { nodes: layoutedNodes, edges: layoutedEdges } = React.useMemo(() => {
+        return getLayoutedElements(
+            graphNodes.map(node => ({
+                id: node.id,
+                select: () => { },
+                data: node, // base node data
+                position: { x: 0, y: 0 }, // initial position
+                type: 'lineageNode',
+            })),
+            graphEdges.map(edge => ({
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+                type: 'smoothstep',
+                animated: true,
+                data: edge,
+            }))
+        );
+    }, [graphNodes, graphEdges]);
 
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);

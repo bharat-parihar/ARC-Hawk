@@ -11,12 +11,37 @@ import (
 	"github.com/arc-platform/backend/internal/infrastructure/persistence"
 )
 
+// ==================================================================================
+// LOCKED PII SCOPE - Intelligence-at-Edge Architecture
+// ==================================================================================
+// Only these 11 India PII types are in scope. All others MUST be rejected.
+// Language: English only
+// ==================================================================================
+var LOCKED_PII_TYPES = map[string]bool{
+	"IN_PAN":             true, // Permanent Account Number
+	"IN_PASSPORT":        true, // Indian Passport Number
+	"IN_AADHAAR":         true, // Aadhaar (UID)
+	"CREDIT_CARD":        true, // Credit/Debit Card
+	"IN_UPI":             true, // UPI ID
+	"IN_IFSC":            true, // IFSC Code
+	"IN_BANK_ACCOUNT":    true, // Bank Account Number
+	"IN_PHONE":           true, // Indian Phone (10 digit)
+	"EMAIL_ADDRESS":      true, // Email
+	"IN_VOTER_ID":        true, // Voter ID (EPIC)
+	"IN_DRIVING_LICENSE": true, // Driving License (India)
+}
+
+// IsLockedPIIType validates if a PII type is in the locked scope
+func IsLockedPIIType(piiType string) bool {
+	normalized := strings.ToUpper(strings.TrimSpace(piiType))
+	return LOCKED_PII_TYPES[normalized]
+}
+
 // ClassificationService handles PII classification with multi-signal intelligence
 type ClassificationService struct {
-	repo           *persistence.PostgresRepository
-	config         *config.Config
-	presidioClient *PresidioClient
-	engineVersion  string
+	repo          *persistence.PostgresRepository
+	config        *config.Config
+	engineVersion string
 }
 
 // NewClassificationService creates a new classification service
@@ -32,11 +57,6 @@ func NewClassificationService(repo *persistence.PostgresRepository, cfg *config.
 		config:        cfg,
 		engineVersion: version,
 	}
-}
-
-// SetPresidioClient sets the Presidio client (optional, enables ML signal)
-func (s *ClassificationService) SetPresidioClient(client *PresidioClient) {
-	s.presidioClient = client
 }
 
 // ClassificationResult is the legacy result format for backward compatibility
@@ -111,36 +131,27 @@ func (s *ClassificationService) ClassifyMultiSignal(ctx context.Context, input M
 	ruleSignal := s.classifyWithRules(input)
 	decision.RuleSignal = ruleSignal
 
-	// STAGE 2: Presidio ML Entity Proposal (if available)
-	presidioSignal := s.classifyWithPresidio(ctx, input)
+	// STAGE 2: Presidio ML - REMOVED (now handled by scanner SDK)
+	// Backend trusts scanner's verified findings
+	presidioSignal := SignalScore{
+		RawScore:      0.0,
+		WeightedScore: 0.0,
+		Weight:        0.0,
+		Confidence:    0.0,
+		Explanation:   "Presidio handled by scanner SDK (Intelligence-at-Edge)",
+	}
 	decision.PresidioSignal = presidioSignal
 
-	// STAGE 3: HARD VALIDATION GATE (ABSOLUTE VETO)
-	// Determine entity type from rule + Presidio signals
-	entityType := s.determineEntityType(ruleSignal, presidioSignal, input.PatternName)
-
-	// Normalize value for validation
-	normalized := strings.TrimSpace(input.MatchValue)
-	digitsOnly := extractDigitsOnly(normalized)
-
-	// Run appropriate validator based on entity type
-	validationPassed := s.runValidator(entityType, normalized, digitsOnly)
-
-	if !validationPassed {
-		// VALIDATOR VETO - Discard immediately
-		// Context and entropy CANNOT resurrect this finding
-		decision.FinalScore = 0.0
-		decision.ConfidenceLevel = "DISCARD"
-		decision.Classification = "Non-PII"
-		decision.SubCategory = "Validation Failed"
-		decision.Justification = fmt.Sprintf("Failed %s validation - HARD VETO", entityType)
-
-		// Store zero signals for transparency
-		decision.ContextSignal = SignalScore{RawScore: 0.0, Explanation: "Skipped (validation failed)"}
-		decision.EntropySignal = SignalScore{RawScore: 0.0, Explanation: "Skipped (validation failed)"}
-
-		return decision, nil
-	}
+	// STAGE 3: VALIDATION GATE - REMOVED (Intelligence-at-Edge)
+	// ========================================================
+	// Backend NO LONGER validates findings - this is now handled exclusively
+	// by the scanner SDK before findings are sent to backend.
+	// Scanner SDK performs:
+	//   - Presidio ML analysis (embedded)
+	//   - Mathematical validation (Luhn, Verhoeff, PAN format)
+	//   - Context extraction
+	// Backend receives ONLY verified findings with proof of validation.
+	// ========================================================
 
 	// STAGE 4: Enrichment (ONLY for validated findings)
 	contextSignal := s.classifyWithContext(input)
@@ -158,8 +169,9 @@ func (s *ClassificationService) ClassifyMultiSignal(ctx context.Context, input M
 		contextSignal.RawScore,
 	)
 
-	// STAGE 6: Classification Type Assignment
-	decision.Classification = s.extractClassificationFromEntity(entityType)
+	// STAGE 6: Classification Type Assignment (Trust-based)
+	// Backend trusts scanner SDK - classify based on pattern name
+	decision.Classification = s.extractClassificationFromPattern(input.PatternName)
 	decision.SubCategory = s.extractSubCategory(decision.Classification)
 
 	// Set DPDPA metadata
@@ -175,64 +187,13 @@ func (s *ClassificationService) ClassifyMultiSignal(ctx context.Context, input M
 		"context":  contextSignal,
 		"entropy":  entropySignal,
 		"validation": map[string]interface{}{
-			"entity_type": entityType,
-			"passed":      validationPassed,
-			"method":      s.getValidatorName(entityType),
+			"handled_by":        "scanner_sdk",
+			"backend_validated": false,
+			"note":              "Intelligence-at-Edge - validation in scanner only",
 		},
 	}
 
 	return decision, nil
-}
-
-// determineEntityType selects the most appropriate entity type from available signals
-func (s *ClassificationService) determineEntityType(ruleSignal SignalScore, presidioSignal SignalScore, patternName string) string {
-	// Prefer Presidio's ML proposal if available and confident
-	if presidioSignal.Confidence > 0.50 && len(presidioSignal.Explanation) > 0 {
-		// Extract entity type from Presidio explanation
-		// Format: "Presidio detected X PII entities: [TYPE1, TYPE2]"
-		if strings.Contains(presidioSignal.Explanation, "CREDIT_CARD") {
-			return "CREDIT_CARD"
-		}
-		if strings.Contains(presidioSignal.Explanation, "IN_AADHAAR") {
-			return "IN_AADHAAR"
-		}
-		if strings.Contains(presidioSignal.Explanation, "IN_PAN") {
-			return "IN_PAN"
-		}
-		if strings.Contains(presidioSignal.Explanation, "US_SSN") {
-			return "US_SSN"
-		}
-		if strings.Contains(presidioSignal.Explanation, "EMAIL") {
-			return "EMAIL_ADDRESS"
-		}
-		if strings.Contains(presidioSignal.Explanation, "PHONE") {
-			return "PHONE_NUMBER"
-		}
-	}
-
-	// Fallback to rule-based inference from pattern name
-	return inferEntityTypeFromPattern(patternName)
-}
-
-// runValidator executes the appropriate validator for the entity type
-func (s *ClassificationService) runValidator(entityType, normalized, digitsOnly string) bool {
-	switch entityType {
-	case "CREDIT_CARD":
-		return luhnValidate(digitsOnly)
-	case "IN_AADHAAR":
-		return len(digitsOnly) == 12 && verhoeffValidate(digitsOnly)
-	case "IN_PAN":
-		return panValidate(normalized)
-	case "US_SSN":
-		return len(digitsOnly) == 9 && ssnValidate(digitsOnly)
-	case "EMAIL_ADDRESS":
-		return strings.Contains(normalized, "@") && strings.Contains(normalized, ".")
-	case "PHONE_NUMBER":
-		return len(digitsOnly) >= 8 && len(digitsOnly) <= 15
-	default:
-		// Unknown entity types pass through (no validator available)
-		return true
-	}
 }
 
 // assignConfidenceTier determines confidence tier based on enrichment signals
@@ -252,20 +213,33 @@ func (s *ClassificationService) assignConfidenceTier(presidioMLConf float64, con
 	return "VALIDATED"
 }
 
-// extractClassificationFromEntity maps entity type to classification category
-func (s *ClassificationService) extractClassificationFromEntity(entityType string) string {
-	switch entityType {
-	case "CREDIT_CARD", "IN_AADHAAR", "IN_PAN", "US_SSN":
+// extractClassificationFromPattern maps pattern names to classification types
+// Used when backend trusts scanner SDK verified findings
+func (s *ClassificationService) extractClassificationFromPattern(patternName string) string {
+	lower := strings.ToLower(patternName)
+
+	// Sensitive Personal Data
+	if containsStrict(lower, []string{"aadhaar", "pan", "pancard", "passport", "ssn", "social_security"}) {
 		return "Sensitive Personal Data"
-	case "EMAIL_ADDRESS", "PHONE_NUMBER":
-		return "Personal Data"
-	default:
-		// Check if it's a secret/credential pattern
-		if isSecretPattern(entityType) {
-			return "Secrets"
-		}
-		return "Non-PII"
 	}
+	if containsStrict(lower, []string{"credit_card", "card", "debit_card"}) {
+		return "Sensitive Personal Data"
+	}
+
+	// Personal Data
+	if containsStrict(lower, []string{"email", "e-mail", "mail"}) {
+		return "Personal Data"
+	}
+	if containsStrict(lower, []string{"phone", "mobile", "cellphone"}) {
+		return "Personal Data"
+	}
+
+	// Secrets
+	if containsStrict(lower, []string{"aws_key", "api_key", "auth_token", "private_key", "secret_key", "password", "token"}) {
+		return "Secrets"
+	}
+
+	return "Non-PII"
 }
 
 // setDPDPAMetadata assigns DPDPA compliance metadata
@@ -283,26 +257,6 @@ func (s *ClassificationService) setDPDPAMetadata(decision *MultiSignalDecision) 
 	default:
 		decision.DPDPACategory = "N/A"
 		decision.RequiresConsent = false
-	}
-}
-
-// getValidatorName returns human-readable validator name for documentation
-func (s *ClassificationService) getValidatorName(entityType string) string {
-	switch entityType {
-	case "CREDIT_CARD":
-		return "Luhn Algorithm"
-	case "IN_AADHAAR":
-		return "Verhoeff Checksum"
-	case "IN_PAN":
-		return "PAN Format Validator"
-	case "US_SSN":
-		return "SSA Rules"
-	case "EMAIL_ADDRESS":
-		return "RFC 5322 Format"
-	case "PHONE_NUMBER":
-		return "E.164 Length Check"
-	default:
-		return "None"
 	}
 }
 
@@ -326,9 +280,6 @@ func (s *ClassificationService) classifyWithRules(input MultiSignalInput) Signal
 	} else if containsStrict(lowerPattern, []string{"pan", "pancard", "permanent_account_number"}) || containsStrict(lowerCol, []string{"pan", "pancard"}) {
 		score = 0.99
 		explanation = "PAN Card pattern detected"
-	} else if containsStrict(lowerPattern, []string{"ssn", "social_security"}) {
-		score = 0.98
-		explanation = "SSN pattern detected"
 	} else if containsStrict(lowerPattern, []string{"aadhaar", "uidai", "adhaar"}) {
 		score = 0.99
 		explanation = "Aadhaar pattern detected"
@@ -367,273 +318,6 @@ func (s *ClassificationService) classifyWithRules(input MultiSignalInput) Signal
 		Confidence:    score,
 		Explanation:   fmt.Sprintf("Rules: %s", explanation),
 	}
-}
-
-// classifyWithPresidio performs ML-based entity type proposal using Presidio
-// ROLE: Entity proposer ONLY - does NOT validate
-// VALIDATION: Happens at gate in ClassifyMultiSignal()
-func (s *ClassificationService) classifyWithPresidio(ctx context.Context, input MultiSignalInput) SignalScore {
-	// If Presidio unavailable, return zero signal
-	// Main gate will use rule-based entity type inference
-	if s.presidioClient == nil {
-		return SignalScore{
-			RawScore:      0.0,
-			WeightedScore: 0.0,
-			Weight:        s.config.Classification.WeightPresidio,
-			Confidence:    0.0,
-			Explanation:   "Presidio unavailable",
-		}
-	}
-
-	if input.MatchValue == "" {
-		return SignalScore{
-			RawScore:      0.0,
-			WeightedScore: 0.0,
-			Weight:        s.config.Classification.WeightPresidio,
-			Confidence:    0.0,
-			Explanation:   "Presidio: Empty value",
-		}
-	}
-
-	// Normalize value before sending to Presidio
-	normalized := strings.TrimSpace(input.MatchValue)
-
-	// Call Presidio for ML-based entity type proposal
-	result, err := s.presidioClient.Analyze(ctx, normalized)
-	if err != nil {
-		return SignalScore{
-			RawScore:      0.0,
-			WeightedScore: 0.0,
-			Weight:        s.config.Classification.WeightPresidio,
-			Confidence:    0.0,
-			Explanation:   fmt.Sprintf("Presidio error: %v", err),
-		}
-	}
-
-	// If Presidio didn't detect anything
-	if !result.Available || result.Confidence == 0.0 {
-		return SignalScore{
-			RawScore:      0.0,
-			WeightedScore: 0.0,
-			Weight:        s.config.Classification.WeightPresidio,
-			Confidence:    0.0,
-			Explanation:   result.Explanation,
-		}
-	}
-
-	// REMOVED: All validation logic
-	// Presidio ONLY proposes entity types and provides ML confidence
-	// Validation happens at the single gate in ClassifyMultiSignal()
-
-	// Return Presidio's ML confidence for enrichment
-	return SignalScore{
-		RawScore:      result.Confidence,
-		WeightedScore: result.Confidence * s.config.Classification.WeightPresidio,
-		Weight:        s.config.Classification.WeightPresidio,
-		Confidence:    result.Confidence,
-		Explanation:   result.Explanation,
-	}
-}
-
-// validateEntity performs hard validation based on entity type
-func validateEntity(entityType, normalized, digitsOnly string) bool {
-	switch entityType {
-	case "CREDIT_CARD":
-		return luhnValidate(digitsOnly)
-	case "IN_AADHAAR":
-		return len(digitsOnly) == 12 && verhoeffValidate(digitsOnly)
-	case "IN_PAN":
-		return panValidate(normalized)
-	case "US_SSN":
-		return len(digitsOnly) == 9 && ssnValidate(digitsOnly)
-	case "EMAIL_ADDRESS":
-		return strings.Contains(normalized, "@") && strings.Contains(normalized, ".")
-	case "PHONE_NUMBER":
-		return len(digitsOnly) >= 8 && len(digitsOnly) <= 15
-	default:
-		return true // Unknown types pass through
-	}
-}
-
-// inferEntityTypeFromPattern maps pattern names to entity types for validator selection
-func inferEntityTypeFromPattern(patternName string) string {
-	lower := strings.ToLower(patternName)
-	if containsStrict(lower, []string{"credit_card", "card", "cvv"}) {
-		return "CREDIT_CARD"
-	}
-	if containsStrict(lower, []string{"aadhaar", "uidai"}) {
-		return "IN_AADHAAR"
-	}
-	if containsStrict(lower, []string{"pan", "pancard"}) {
-		return "IN_PAN"
-	}
-	if containsStrict(lower, []string{"ssn", "social_security"}) {
-		return "US_SSN"
-	}
-	if containsStrict(lower, []string{"email", "e-mail"}) {
-		return "EMAIL_ADDRESS"
-	}
-	if containsStrict(lower, []string{"phone", "mobile"}) {
-		return "PHONE_NUMBER"
-	}
-	return ""
-}
-
-// Helper function to extract only digits (inline implementation)
-func extractDigitsOnly(value string) string {
-	digits := ""
-	for _, c := range value {
-		if c >= '0' && c <= '9' {
-			digits += string(c)
-		}
-	}
-	return digits
-}
-
-// Inline Luhn validator (should use pkg/validation in production)
-func luhnValidate(number string) bool {
-	if len(number) == 0 {
-		return false
-	}
-	var sum int
-	parity := len(number) % 2
-	for i, digit := range number {
-		if digit < '0' || digit > '9' {
-			return false
-		}
-		d := int(digit - '0')
-		if i%2 == parity {
-			d *= 2
-			if d > 9 {
-				d -= 9
-			}
-		}
-		sum += d
-	}
-	return sum%10 == 0
-}
-
-// Verhoeff Algorithm Tables
-var (
-	// Multiplication table (dihedral group D5)
-	verhoeffMultiplication = [10][10]int{
-		{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-		{1, 2, 3, 4, 0, 6, 7, 8, 9, 5},
-		{2, 3, 4, 0, 1, 7, 8, 9, 5, 6},
-		{3, 4, 0, 1, 2, 8, 9, 5, 6, 7},
-		{4, 0, 1, 2, 3, 9, 5, 6, 7, 8},
-		{5, 9, 8, 7, 6, 0, 4, 3, 2, 1},
-		{6, 5, 9, 8, 7, 1, 0, 4, 3, 2},
-		{7, 6, 5, 9, 8, 2, 1, 0, 4, 3},
-		{8, 7, 6, 5, 9, 3, 2, 1, 0, 4},
-		{9, 8, 7, 6, 5, 4, 3, 2, 1, 0},
-	}
-
-	// Permutation table
-	verhoeffPermutation = [8][10]int{
-		{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-		{1, 5, 7, 6, 2, 8, 3, 0, 9, 4},
-		{5, 8, 0, 3, 7, 9, 6, 1, 4, 2},
-		{8, 9, 1, 6, 0, 4, 3, 5, 2, 7},
-		{9, 4, 5, 3, 1, 2, 6, 8, 7, 0},
-		{4, 2, 8, 6, 5, 7, 3, 9, 0, 1},
-		{2, 7, 9, 3, 8, 0, 6, 4, 1, 5},
-		{7, 0, 4, 6, 9, 1, 3, 2, 5, 8},
-	}
-
-	// Inverse table
-	verhoeffInverse = [10]int{0, 4, 3, 2, 1, 5, 6, 7, 8, 9}
-)
-
-// verhoeffValidate performs full Verhoeff checksum validation for Aadhaar numbers
-func verhoeffValidate(number string) bool {
-	if len(number) != 12 {
-		return false
-	}
-
-	// Validate all characters are digits
-	for _, c := range number {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-
-	// Calculate Verhoeff checksum
-	checksum := 0
-
-	// Process digits from right to left
-	for i, digit := range reverseString(number) {
-		digitValue := int(digit - '0')
-
-		// Get permutation based on position (modulo 8)
-		permutationRow := i % 8
-		permutedDigit := verhoeffPermutation[permutationRow][digitValue]
-
-		// Apply multiplication table
-		checksum = verhoeffMultiplication[checksum][permutedDigit]
-	}
-
-	// Valid if checksum is 0
-	return checksum == 0
-}
-
-// reverseString helper for Verhoeff algorithm
-func reverseString(s string) string {
-	runes := []rune(s)
-	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-		runes[i], runes[j] = runes[j], runes[i]
-	}
-	return string(runes)
-}
-
-// Inline PAN validator
-func panValidate(pan string) bool {
-	if len(pan) != 10 {
-		return false
-	}
-	// Format: AAAAA9999A
-	for i := 0; i < 5; i++ {
-		if pan[i] < 'A' || pan[i] > 'Z' {
-			return false
-		}
-	}
-	for i := 5; i < 9; i++ {
-		if pan[i] < '0' || pan[i] > '9' {
-			return false
-		}
-	}
-	if pan[9] < 'A' || pan[9] > 'Z' {
-		return false
-	}
-	return true
-}
-
-// Inline SSN validator
-func ssnValidate(ssn string) bool {
-	if len(ssn) != 9 {
-		return false
-	}
-	// Check blacklist
-	blacklist := map[string]bool{
-		"000000000": true,
-		"111111111": true,
-		"222222222": true,
-		"123456789": true,
-	}
-	if blacklist[ssn] {
-		return false
-	}
-	// Check SSA rules
-	if ssn[0:3] == "000" || ssn[0:3] == "666" {
-		return false
-	}
-	if ssn[3:5] == "00" {
-		return false
-	}
-	if ssn[5:9] == "0000" {
-		return false
-	}
-	return true
 }
 
 // classifyWithContext uses enrichment signals as context
@@ -696,60 +380,6 @@ func isSecretPattern(patternName string) bool {
 		}
 	}
 	return false
-}
-
-// applyThresholds determines confidence level and sets metadata
-func (s *ClassificationService) applyThresholds(decision *MultiSignalDecision, ruleSignal SignalScore) {
-	score := decision.FinalScore
-
-	// Determine classification type from rules (primary)
-	if score >= ThresholdConfirmed {
-		decision.ConfidenceLevel = "Confirmed"
-	} else if score >= ThresholdHigh {
-		decision.ConfidenceLevel = "High Confidence"
-	} else if score >= ThresholdNeedsReview {
-		decision.ConfidenceLevel = "Needs Review"
-	} else {
-		decision.ConfidenceLevel = "Discard"
-		decision.Classification = "Non-PII"
-		decision.SubCategory = "Below Threshold"
-		return
-	}
-
-	// Use rule-based classification as primary type
-	decision.Classification = s.extractClassificationFromRules(ruleSignal.Explanation)
-	decision.SubCategory = s.extractSubCategory(decision.Classification)
-
-	// Set DPDPA metadata
-	switch decision.Classification {
-	case "Sensitive Personal Data":
-		decision.DPDPACategory = "Sensitive Personal Data"
-		decision.RequiresConsent = true
-	case "Personal Data":
-		decision.DPDPACategory = "Personal Data"
-		decision.RequiresConsent = true
-	case "Secrets":
-		decision.DPDPACategory = "N/A"
-		decision.RequiresConsent = false
-	default:
-		decision.DPDPACategory = "N/A"
-		decision.RequiresConsent = false
-	}
-}
-
-// extractClassificationFromRules parses the rule explanation
-func (s *ClassificationService) extractClassificationFromRules(explanation string) string {
-	if strings.Contains(explanation, "credentials") || strings.Contains(explanation, "secrets") {
-		return "Secrets"
-	}
-	if strings.Contains(explanation, "PAN") || strings.Contains(explanation, "Aadhaar") ||
-		strings.Contains(explanation, "SSN") || strings.Contains(explanation, "Financial") {
-		return "Sensitive Personal Data"
-	}
-	if strings.Contains(explanation, "Email") || strings.Contains(explanation, "Phone") {
-		return "Personal Data"
-	}
-	return "Non-PII"
 }
 
 // extractSubCategory determines sub-category
@@ -858,13 +488,6 @@ func (s *ClassificationService) classifyLegacy(patternName, filePath, _ string, 
 		result.ConfidenceScore = 0.99
 		result.RequiresConsent = true
 		result.Justification = "Pattern/Column indicates PAN Card"
-	} else if containsStrict(lowerPattern, []string{"ssn", "social_security"}) {
-		result.ClassificationType = "Sensitive Personal Data"
-		result.SubCategory = "Government ID"
-		result.DPDPACategory = "Sensitive Personal Data"
-		result.ConfidenceScore = 0.98
-		result.RequiresConsent = true
-		result.Justification = "Pattern indicates SSN"
 	} else if containsStrict(lowerPattern, []string{"aadhaar", "uidai", "adhaar"}) {
 		result.ClassificationType = "Sensitive Personal Data"
 		result.SubCategory = "Government ID"

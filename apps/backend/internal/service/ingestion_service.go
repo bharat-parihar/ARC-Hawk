@@ -312,7 +312,6 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			decision.Classification,
 			decision.ConfidenceLevel,
 			hawkeyeFinding.FileData,
-			decision.FinalScore,
 		)
 
 		// Create finding with deduplication hash
@@ -745,7 +744,7 @@ func isProductionEnvironment(fileData map[string]interface{}) bool {
 
 // calculateComprehensiveRiskScore provides numeric risk score (0-100) for sorting and prioritization
 // Combines classification sensitivity, confidence level, and environment context
-func calculateComprehensiveRiskScore(classification, confidence string, fileData map[string]interface{}, finalScore float64) int {
+func calculateComprehensiveRiskScore(classification, confidence string, fileData map[string]interface{}) int {
 	// Base weights for classification types
 	var classificationWeight float64
 	switch classification {
@@ -781,13 +780,13 @@ func calculateComprehensiveRiskScore(classification, confidence string, fileData
 	// Calculate weighted score
 	// Formula: (ClassWeight * 0.6) + (Confidence * 20) + (Context * 20)
 	// This ensures classification type dominates, but confidence/context can adjust prioritization
-	
+
 	baseScore := classificationWeight * 0.6
 	confidenceScore := (confidenceMultiplier * 100) * 0.2
 	contextScore := (contextMultiplier * 100) * 0.2
-	
+
 	totalScore := int(baseScore + confidenceScore + contextScore)
-	
+
 	// Ensure bounds 0-100
 	if totalScore > 100 {
 		return 100
@@ -795,11 +794,11 @@ func calculateComprehensiveRiskScore(classification, confidence string, fileData
 	if totalScore < 0 {
 		return 0
 	}
-	
+
 	return totalScore
 }
 
-// ClearAllScanData deletes all previous scan data for clean scan-replace workflow  
+// ClearAllScanData deletes all previous scan data for clean scan-replace workflow
 func (s *IngestionService) ClearAllScanData(ctx context.Context) error {
 	log.Println("Clearing all previous scan data...")
 	_, err := s.repo.GetDB().ExecContext(ctx, `

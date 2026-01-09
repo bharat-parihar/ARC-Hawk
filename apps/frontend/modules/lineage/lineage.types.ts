@@ -81,3 +81,13 @@ export const RISK_COLORS = {
     MEDIUM: '#fbbf24',
     LOW: '#4ade80',
 };
+
+// Graph Layout Configuration
+export const DEFAULT_LAYOUT_CONFIG = {
+    rankdir: 'LR',
+    nodesep: 80,
+    ranksep: 150,
+    edgesep: 50,
+    marginx: 50,
+    marginy: 50,
+};

@@ -75,21 +75,34 @@ func (r *Router) SetupRoutes(
 		// Scan ingestion
 		scans := v1.Group("/scans")
 		{
-			scans.POST("/ingest", r.ingestionHandler.IngestScan)
+			// LEGACY: Unverified ingestion (still active for backward compat)
+			// TODO: Deprecate after scanner migration to SDK verified-only
+			scans.POST("/ingest", func(c *gin.Context) {
+				c.Header("Warning", "299 - \"/api/v1/scans/ingest\" is deprecated and will be removed. Use \"/api/v1/scans/ingest-verified\" instead.")
+				r.ingestionHandler.IngestScan(c)
+			})
 			scans.GET("/latest", r.ingestionHandler.GetLatestScan)
 			scans.GET("/:id", r.ingestionHandler.GetScanStatus)
 			scans.DELETE("/clear", r.ingestionHandler.ClearScanData)
 
-			// Phase 2: SDK-verified ingestion
+			// RECOMMENDED: SDK-verified ingestion (Intelligence-at-Edge)
 			scans.POST("/ingest-verified", sdkIngestHandler.IngestVerified)
 		}
 
 		// Phase 3: Unified lineage (NEW - Neo4j only)
 		v1.GET("/lineage", lineageHandlerV2.GetLineage)
 		v1.GET("/lineage/stats", lineageHandlerV2.GetLineageStats)
+		v1.POST("/lineage/sync", lineageHandlerV2.SyncLineage) // Added manual sync
 
-		// OLD lineage (keep for now during transition)
-		v1.GET("/lineage-old", r.lineageHandler.GetLineage)
+		// DEPRECATED: Old lineage endpoint (PostgreSQL fallback) - REMOVED
+		v1.GET("/lineage-old", func(c *gin.Context) {
+			c.JSON(410, gin.H{
+				"error":            "This endpoint has been permanently removed",
+				"migration":        "Use /api/v1/lineage instead (Neo4j-based lineage)",
+				"deprecated_since": "2026-01-09",
+				"reason":           "Intelligence-at-Edge: Neo4j is now mandatory",
+			})
+		})
 
 		// Semantic Graph (NEW - Aggregated Neo4j Graph)
 		graph := v1.Group("/graph")
@@ -101,7 +114,16 @@ func (r *Router) SetupRoutes(
 		classification := v1.Group("/classification")
 		{
 			classification.GET("/summary", r.classificationHandler.GetClassificationSummary)
-			classification.POST("/predict", r.classificationHandler.Predict)
+
+			// DEPRECATED: Backend classification - REMOVED
+			classification.POST("/predict", func(c *gin.Context) {
+				c.JSON(410, gin.H{
+					"error":            "This endpoint has been permanently removed",
+					"migration":        "Classification now handled by scanner SDK only",
+					"deprecated_since": "2026-01-09",
+					"reason":           "Intelligence-at-Edge: All ML/validation in scanner",
+				})
+			})
 		}
 
 		// Findings

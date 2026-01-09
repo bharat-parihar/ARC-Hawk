@@ -14,12 +14,12 @@ import type {
     ClassificationSummary,
     FindingsResponse,
 } from '@/types';
-import type { LineageGraph } from '@/modules/lineage/lineage.types';
+import type { LineageGraphData, LineageNode } from '@/modules/lineage/lineage.types';
 import { colors } from '@/design-system/colors';
 import { theme } from '@/design-system/themes';
 
 export default function DashboardPage() {
-    const [lineageData, setLineageData] = useState<LineageGraph | null>(null);
+    const [lineageData, setLineageData] = useState<LineageGraphData | null>(null);
     const [findingsData, setFindingsData] = useState<FindingsResponse | null>(null);
     const [classificationSummary, setClassificationSummary] = useState<ClassificationSummary | null>(null);
     const [loading, setLoading] = useState(true);
@@ -60,7 +60,8 @@ export default function DashboardPage() {
             if (graphMode === 'semantic') {
                 dataPromises.push(lineageApi.getSemanticGraph({}));
             } else {
-                dataPromises.push(lineageApi.getLineage({ level: 'asset' }));
+                // Fix: fetchLineage expects string arguments, not an object
+                dataPromises.push(lineageApi.getLineage(undefined, undefined));
             }
 
             const [classification, graphData] = await Promise.all(dataPromises);
@@ -104,20 +105,31 @@ export default function DashboardPage() {
     const criticalFindings = findingsData?.findings.filter(f => f.severity === 'Critical').length || 0;
 
     // Calculate high-risk assets
-    const highRiskAssets = lineageData?.nodes.filter(n => n.risk_score >= 70).length || 0;
+    const highRiskAssets = lineageData?.nodes?.filter(n => {
+        if (n.type === 'asset' && 'risk_score' in n.metadata) {
+            return (n.metadata.risk_score as number) >= 70;
+        }
+        return false;
+    }).length || 0;
 
     // Calculate overall risk score
-    const avgRiskScore = lineageData?.nodes.length
-        ? Math.round(lineageData.nodes.reduce((sum, n) => sum + n.risk_score, 0) / lineageData.nodes.length)
+    const avgRiskScore = lineageData?.nodes?.length
+        ? Math.round(lineageData.nodes.reduce((sum, n) => {
+            if (n.type === 'asset' && 'risk_score' in n.metadata) {
+                return sum + (n.metadata.risk_score as number);
+            }
+            return sum;
+        }, 0) / lineageData.nodes.length)
         : 0;
 
     // Filter nodes based on search
     const [searchQuery, setSearchQuery] = useState('');
 
     const filteredNodes = React.useMemo(() => {
-        if (!lineageData || !searchQuery) return lineageData?.nodes || [];
+        const nodes = lineageData?.nodes || [];
+        if (!searchQuery) return nodes;
         const lower = searchQuery.toLowerCase();
-        return lineageData.nodes.filter(n =>
+        return nodes.filter(n =>
             n.label.toLowerCase().includes(lower) ||
             n.type.toLowerCase().includes(lower)
         );
@@ -125,9 +137,10 @@ export default function DashboardPage() {
 
     // Filter edges to only those connecting visible nodes
     const filteredEdges = React.useMemo(() => {
-        if (!lineageData || !searchQuery) return lineageData?.edges || [];
+        const edges = lineageData?.edges || [];
+        if (!searchQuery) return edges;
         const nodeIds = new Set(filteredNodes.map(n => n.id));
-        return lineageData.edges.filter(e =>
+        return edges.filter(e =>
             nodeIds.has(e.source) && nodeIds.has(e.target)
         );
     }, [lineageData, filteredNodes, searchQuery]);

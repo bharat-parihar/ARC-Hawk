@@ -178,6 +178,10 @@ output.csv
 output.json
 fs-result.json
 lineage.json
+apps/scanner/*_scan.json
+apps/scanner/output.json
+apps/scanner/scan_output.json
+apps/scanner/previous_alerts.json
 
 # Node modules
 node_modules/

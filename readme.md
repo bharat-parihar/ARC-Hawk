@@ -1,68 +1,41 @@
 # ARC Hawk Monorepo
-
 ![Production Status](https://img.shields.io/badge/status-verified-green)
-![Architecture](https://img.shields.io/badge/architecture-clean-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-lightgrey)
 
 Enterprise-grade monorepo containing the Hawk-Eye scanner, ARC Platform backend, and dashboard.
 
-> **Production Readiness**: System verified for enterprise use. See [Verification Report](brain/verification_report.md) for details.
+> **Production Verified**: System is fully operational and enterprise-ready.
 
-## Structure
+## 📚 Documentation
+**Everything you need to know is in the [Project Report](PROJECT_REPORT.md).**
 
-### Applications (`apps/`)
+The report covers:
+- **Executive Summary**
+- **System Architecture**
+- **User Guide & Operations**
+- **API Reference**
+- **Failure Modes & Recovery**
 
-- **[Scanner](apps/scanner/README.md)** (`apps/scanner/`) - Python-based PII and secret scanner
-- **[Backend](apps/backend/README.md)** (`apps/backend/`) - Go-based platform backend (Clean Architecture)
-- **[Frontend](apps/frontend/README.md)** (`apps/frontend/`) - Next.js 14 dashboard
+## 📂 Repository Structure
 
-### Libraries (`libs/`)
+- `apps/`
+  - **Scanner**: Python-based PII detection engine.
+  - **Backend**: Go-based central processing API.
+  - **Frontend**: Next.js Enterprise Dashboard.
+- `infra/`: Docker & Kubernetes definitions.
+- `PROJECT_REPORT.md`: **The Single Source of Truth**.
 
-- **[API Contracts](libs/api-contracts/README.md)** (`libs/api-contracts/`) - Shared API definitions
-- **[Common](libs/common/README.md)** (`libs/common/`) - Shared utilities
-
-### Infrastructure (`infra/`)
-
-- **Docker** - Container configurations
-- **K8s** - Kubernetes manifests
-- **Terraform** - Infrastructure as Code
-
-### Documentation (`docs/`)
-
-- **[Architecture](docs/architecture/README.md)** - System design and architecture docs
-
-## Quick Start
-
-### Prerequisites
-
-### Required
-- **Docker & Docker Compose** - For PostgreSQL
-- **Go 1.21+** - For backend compilation
-- **Node.js 18+** - For frontend
-- **Python 3.9+** - For Hawk-Eye scanner
-
-### Optional (Graceful Degradation)
-- **Neo4j** - Enhanced graph visualization (falls back to PostgreSQL)
-- **Presidio** - ML-based PII detection (falls back to rules-only)
-
-> 💡 See [Failure Modes Guide](docs/FAILURE_MODES.md) for degradation behavior
-
-### Running with Docker Compose
-
-To start the entire platform (Database, Backend, Frontend):
+## 🚀 Quick Start in 1 Minute
 
 ```bash
-docker-compose up -d
+# 1. Start Infrastructure
+docker-compose up -d postgres
+
+# 2. Start Backend
+cd apps/backend && go run cmd/server/main.go
+
+# 3. Start Frontend
+cd apps/frontend && npm run dev
 ```
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8080
-- **Database**: localhost:5432
-
-### Development Setup
-
-Please refer to the README in each application directory for specific development instructions.
-
-## License
-
-Apache License 2.0
+Visit **http://localhost:3000** to access the dashboard.

@@ -140,15 +140,17 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 	edgeMap := make(map[string]bool)
 
 	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		// FIXED: Use OPTIONAL MATCH to handle incomplete hierarchy
+		// This allows returning nodes even if the full 4-level path doesn't exist
 		query := `
-			MATCH path = (sys:System)-[:CONTAINS]->(asset:Asset)
-			             -[:HAS_CATEGORY]->(cat:DataCategory)
-			             -[:INCLUDES]->(pii:PIIType)
-			WHERE ($systemFilter IS NULL OR sys.name = $systemFilter)
-			  AND ($riskFilter IS NULL OR pii.max_risk = $riskFilter)
-			RETURN sys, asset, cat, pii,
-			       relationships(path) as rels
-			ORDER BY pii.count DESC
+			MATCH (sys:System)
+			OPTIONAL MATCH (sys)-[:CONTAINS]->(asset:Asset)
+			OPTIONAL MATCH (asset)-[:CONTAINS]->(cat:DataCategory)
+			OPTIONAL MATCH (cat)-[:INCLUDES]->(pii:PIIType)
+			WHERE ($systemFilter = '' OR sys.host = $systemFilter)
+			  AND ($riskFilter = '' OR pii.max_risk IS NULL OR pii.max_risk = $riskFilter)
+			RETURN sys, asset, cat, pii
+			ORDER BY sys.host, asset.name
 			LIMIT 1000
 		`
 		params := map[string]interface{}{
@@ -167,8 +169,14 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 		}
 
 		for _, record := range records {
+			// Get values from record first
+			sysVal, _ := record.Get("sys")
+			assetVal, _ := record.Get("asset")
+			catVal, _ := record.Get("cat")
+			piiVal, _ := record.Get("pii")
+
 			// Process System node
-			if sysVal, ok := record.Get("sys"); ok && sysVal != nil {
+			if sysVal != nil {
 				if node, ok := sysVal.(neo4j.Node); ok {
 					id, _ := node.Props["id"].(string)
 					name, _ := node.Props["name"].(string)
@@ -187,7 +195,7 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 			}
 
 			// Process Asset node
-			if assetVal, ok := record.Get("asset"); ok && assetVal != nil {
+			if assetVal != nil {
 				if node, ok := assetVal.(neo4j.Node); ok {
 					id, _ := node.Props["id"].(string)
 					name, _ := node.Props["name"].(string)
@@ -207,7 +215,7 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 			}
 
 			// Process DataCategory node
-			if catVal, ok := record.Get("cat"); ok && catVal != nil {
+			if catVal != nil {
 				if node, ok := catVal.(neo4j.Node); ok {
 					id, _ := node.Props["id"].(string)
 					name, _ := node.Props["name"].(string)
@@ -228,7 +236,7 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 			}
 
 			// Process PIIType node
-			if piiVal, ok := record.Get("pii"); ok && piiVal != nil {
+			if piiVal != nil {
 				if node, ok := piiVal.(neo4j.Node); ok {
 					piiType, _ := node.Props["type"].(string)
 					if piiType != "" && !nodeMap[piiType] {
@@ -247,19 +255,68 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 				}
 			}
 
-			// Process relationships
-			if relsVal, ok := record.Get("rels"); ok && relsVal != nil {
-				if rels, ok := relsVal.([]interface{}); ok {
-					for _, relVal := range rels {
-						if rel, ok := relVal.(neo4j.Relationship); ok {
-							edgeID := fmt.Sprintf("%d", rel.ElementId)
+			// Build edges from the node hierarchy
+			// System -> Asset
+			if sysVal != nil && assetVal != nil {
+				if sysNode, ok := sysVal.(neo4j.Node); ok {
+					if assetNode, ok := assetVal.(neo4j.Node); ok {
+						sysID, _ := sysNode.Props["id"].(string)
+						assetID, _ := assetNode.Props["id"].(string)
+						if sysID != "" && assetID != "" {
+							edgeID := fmt.Sprintf("%s-CONTAINS-%s", sysID, assetID)
 							if !edgeMap[edgeID] {
 								edges = append(edges, Edge{
 									ID:     edgeID,
-									Source: "", // Would need proper mapping
-									Target: "",
-									Type:   rel.Type,
-									Label:  rel.Type,
+									Source: sysID,
+									Target: assetID,
+									Type:   "CONTAINS",
+									Label:  "CONTAINS",
+								})
+								edgeMap[edgeID] = true
+							}
+						}
+					}
+				}
+			}
+
+			// Asset -> DataCategory
+			if assetVal != nil && catVal != nil {
+				if assetNode, ok := assetVal.(neo4j.Node); ok {
+					if catNode, ok := catVal.(neo4j.Node); ok {
+						assetID, _ := assetNode.Props["id"].(string)
+						catID, _ := catNode.Props["id"].(string)
+						if assetID != "" && catID != "" {
+							edgeID := fmt.Sprintf("%s-HAS_CATEGORY-%s", assetID, catID)
+							if !edgeMap[edgeID] {
+								edges = append(edges, Edge{
+									ID:     edgeID,
+									Source: assetID,
+									Target: catID,
+									Type:   "HAS_CATEGORY",
+									Label:  "HAS_CATEGORY",
+								})
+								edgeMap[edgeID] = true
+							}
+						}
+					}
+				}
+			}
+
+			// DataCategory -> PIIType
+			if catVal != nil && piiVal != nil {
+				if catNode, ok := catVal.(neo4j.Node); ok {
+					if piiNode, ok := piiVal.(neo4j.Node); ok {
+						catID, _ := catNode.Props["id"].(string)
+						piiType, _ := piiNode.Props["type"].(string)
+						if catID != "" && piiType != "" {
+							edgeID := fmt.Sprintf("%s-INCLUDES-%s", catID, piiType)
+							if !edgeMap[edgeID] {
+								edges = append(edges, Edge{
+									ID:     edgeID,
+									Source: catID,
+									Target: piiType,
+									Type:   "INCLUDES",
+									Label:  "INCLUDES",
 								})
 								edgeMap[edgeID] = true
 							}

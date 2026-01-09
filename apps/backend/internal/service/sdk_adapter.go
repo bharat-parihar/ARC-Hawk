@@ -159,7 +159,8 @@ func determineDataSource(assetType string) string {
 }
 
 func determineSeverity(piiType string) string {
-	criticalTypes := []string{"AADHAAR", "PAN", "CREDIT_CARD", "SSN"}
+	// Only India PIIs + Credit Card in scope (Intelligence-at-Edge)
+	criticalTypes := []string{"IN_AADHAAR", "IN_PAN", "CREDIT_CARD", "IN_PASSPORT"}
 	for _, ct := range criticalTypes {
 		if piiType == ct {
 			return "Critical"
@@ -179,13 +180,19 @@ func getSeverityDescription(severity string) string {
 }
 
 func mapPIITypeToClassification(piiType string) string {
+	// Only India PIIs in scope (11 locked types)
 	mapping := map[string]string{
-		"AADHAAR":      "Sensitive Personal Data",
-		"PAN":          "Sensitive Personal Data",
-		"CREDIT_CARD":  "Financial Data",
-		"SSN":          "Sensitive Personal Data",
-		"EMAIL":        "Personal Data",
-		"PHONE_NUMBER": "Personal Data",
+		"IN_AADHAAR":         "Sensitive Personal Data",
+		"IN_PAN":             "Sensitive Personal Data",
+		"IN_PASSPORT":        "Sensitive Personal Data",
+		"CREDIT_CARD":        "Financial Data",
+		"IN_UPI":             "Financial Data",
+		"IN_IFSC":            "Financial Data",
+		"IN_BANK_ACCOUNT":    "Financial Data",
+		"IN_PHONE":           "Personal Data",
+		"EMAIL_ADDRESS":      "Personal Data",
+		"IN_VOTER_ID":        "Government Identifier",
+		"IN_DRIVING_LICENSE": "Government Identifier",
 	}
 	if ct, ok := mapping[piiType]; ok {
 		return ct
@@ -194,13 +201,19 @@ func mapPIITypeToClassification(piiType string) string {
 }
 
 func getDPDPACategory(piiType string) string {
+	// DPDPA 2023 categories for India PIIs only
 	mapping := map[string]string{
-		"AADHAAR":      "Sensitive Personal Data",
-		"PAN":          "Financial Identifier",
-		"CREDIT_CARD":  "Financial Data",
-		"SSN":          "Government Identifier",
-		"EMAIL":        "Contact Information",
-		"PHONE_NUMBER": "Contact Information",
+		"IN_AADHAAR":         "Sensitive Personal Data",
+		"IN_PAN":             "Financial Identifier",
+		"IN_PASSPORT":        "Government Identifier",
+		"CREDIT_CARD":        "Financial Data",
+		"IN_UPI":             "Financial Identifier",
+		"IN_IFSC":            "Financial Identifier",
+		"IN_BANK_ACCOUNT":    "Financial Data",
+		"IN_PHONE":           "Contact Information",
+		"EMAIL_ADDRESS":      "Contact Information",
+		"IN_VOTER_ID":        "Government Identifier",
+		"IN_DRIVING_LICENSE": "Government Identifier",
 	}
 	if cat, ok := mapping[piiType]; ok {
 		return cat
@@ -209,7 +222,8 @@ func getDPDPACategory(piiType string) string {
 }
 
 func requiresConsent(piiType string) bool {
-	sensitiveTypes := []string{"AADHAAR", "PAN", "SSN", "CREDIT_CARD"}
+	// India DPDPA 2023: Sensitive data requiring explicit consent
+	sensitiveTypes := []string{"IN_AADHAAR", "IN_PAN", "IN_PASSPORT", "CREDIT_CARD", "IN_DRIVING_LICENSE"}
 	for _, st := range sensitiveTypes {
 		if piiType == st {
 			return true

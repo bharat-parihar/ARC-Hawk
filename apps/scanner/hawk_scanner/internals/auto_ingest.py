@@ -1,6 +1,9 @@
 """
 Auto-ingestion module for Hawk Scanner
-Handles automatic POST of scan results to backend API with retry logic
+Handles automatic POST of scan results to backend API with retry logic.
+
+UPDATED: Now uses /ingest-verified endpoint with VerifiedFinding schema.
+Intelligence-at-Edge: Scanner sends ONLY validated findings.
 """
 
 import requests
@@ -40,13 +43,16 @@ def create_retry_session(retries=3, backoff_factor=0.5, status_forcelist=(500, 5
     return session
 
 
-def ingest_scan_results(args, grouped_results, scan_metadata=None):
+def ingest_verified_findings(args, verified_findings, scan_metadata=None):
     """
-    POST scan results to backend ingestion API with retry logic
+    POST verified findings to backend /ingest-verified API.
+    
+    Intelligence-at-Edge: Scanner sends ONLY validated findings.
+    Backend trusts scanner and does NOT re-validate.
     
     Args:
         args: Command line arguments (must contain ingest_url)
-        grouped_results: Grouped scan results by data source
+        verified_findings: List of VerifiedFinding objects (already validated)
         scan_metadata: Optional metadata about the scan
     
     Returns:
@@ -58,16 +64,25 @@ def ingest_scan_results(args, grouped_results, scan_metadata=None):
     # Import here to avoid circular dependency
     from hawk_scanner.internals import system
     
-    ingest_url = args.ingest_url
-    system.print_info(args, f"🚀 Auto-ingesting scan results to {ingest_url}")
+    # Use /ingest-verified endpoint
+    base_url = args.ingest_url.rstrip('/ingest').rstrip('/api/v1/scans')
+    ingest_url = f"{base_url}/api/v1/scans/ingest-verified"
     
-    # Prepare payload
+    system.print_info(args, f"🚀 Auto-ingesting VERIFIED findings to {ingest_url}")
+    
+    # Convert VerifiedFinding objects to dicts
+    findings_dicts = [finding.to_dict() for finding in verified_findings]
+    
+    # Prepare payload with VerifiedFinding schema
     payload = {
         "scan_metadata": scan_metadata or {
-            "scanner_version": "hawk-eye-scanner",
+            "scanner_version": "hawk-eye-scanner-2.0-sdk",
             "scan_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "intelligence_at_edge": True,  # Mark as Intelligence-at-Edge
+            "sdk_validated": True,
         },
-        "grouped_results": grouped_results
+        "verified_findings": findings_dicts,
+        "total_findings": len(findings_dicts)
     }
     
     # Create session with retry logic
@@ -77,7 +92,8 @@ def ingest_scan_results(args, grouped_results, scan_metadata=None):
     session = create_retry_session(retries=retries)
     
     try:
-        system.print_info(args, f"⏳ Sending {sum(len(results) for results in grouped_results.values())} findings to backend...")
+        system.print_info(args, f"⏳ Sending {len(findings_dicts)} VERIFIED findings to backend...")
+        system.print_info(args, "   (Backend will NOT re-validate - Intelligence-at-Edge)")
         
         response = session.post(
             ingest_url,
@@ -87,8 +103,12 @@ def ingest_scan_results(args, grouped_results, scan_metadata=None):
         )
         
         if response.status_code in [200, 201]:
-            system.print_success(args, f"✅ Successfully ingested scan results!")
-            system.print_info(args, f"Response: {response.json()}")
+            system.print_success(args, f"✅ Successfully ingested {len(findings_dicts)} verified findings!")
+            try:
+                resp_data = response.json()
+                system.print_info(args, f"Response: {resp_data}")
+            except:
+                pass
             return True
         else:
             system.print_error(args, f"❌ Ingestion failed with status {response.status_code}: {response.text}")
@@ -111,6 +131,20 @@ def ingest_scan_results(args, grouped_results, scan_metadata=None):
         session.close()
 
 
+# Legacy function for backward compatibility
+def ingest_scan_results(args, grouped_results, scan_metadata=None):
+    """
+    DEPRECATED: Use ingest_verified_findings() instead.
+    
+    This function is kept for backward compatibility but should not be used.
+    The new Intelligence-at-Edge architecture requires VerifiedFinding objects.
+    """
+    from hawk_scanner.internals import system
+    system.print_error(args, "⚠️  WARNING: Using deprecated ingest_scan_results()")
+    system.print_info(args, "   Please update to ingest_verified_findings() with VerifiedFinding objects")
+    return False
+
+
 def validate_ingest_url(url):
     """
     Validate that the ingestion URL is properly formatted
@@ -128,6 +162,6 @@ def validate_ingest_url(url):
     if not url.startswith(('http://', 'https://')):
         return False
     
-    # Should end with /ingest or /api/v1/ingest
-    valid_endpoints = ['/ingest', '/api/v1/ingest', '/api/ingest']
+    # Should end with /ingest-verified (new) or /ingest (legacy)
+    valid_endpoints = ['/ingest-verified', '/ingest', '/api/v1/scans/ingest-verified', '/api/v1/scans/ingest']
     return any(url.endswith(endpoint) for endpoint in valid_endpoints)

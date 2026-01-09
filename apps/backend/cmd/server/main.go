@@ -58,10 +58,10 @@ func main() {
 		os.Getenv("DB_HOST"),
 		os.Getenv("DB_PORT"),
 		os.Getenv("DB_NAME"),
-		os.Getenv("DB_SSLMODE"))
+		getEnv("DB_SSLMODE", "disable"))
 
 	m, err := migrate.New(
-		"file://../../migrations_versioned",
+		"file://migrations_versioned",
 		migrationURL)
 	if err != nil {
 		log.Fatalf("Failed to initialize migrations: %v", err)
@@ -83,35 +83,20 @@ func main() {
 	classificationService := service.NewClassificationService(repo, cfg)
 	classificationSummaryService := service.NewClassificationSummaryService(repo)
 
-	// MANDATORY: Presidio ML integration (Presidio-first architecture)
-	presidioURL := os.Getenv("PRESIDIO_URL")
-	if presidioURL == "" {
-		presidioURL = "http://127.0.0.1:5001" // Default (use IPv4)
-	}
+	// REMOVED: Presidio initialization - Intelligence-at-Edge architecture
+	// Presidio SDK now runs ONLY in Python scanner, not in Go backend
+	// Backend trusts scanner's verified findings without re-running ML
 
-	// Create Presidio client
-	presidioClient := service.NewPresidioClient(presidioURL, true) // always enabled
+	// ==================================================================================
+	// Neo4j Configuration - REQUIRED (Intelligence-at-Edge Architecture)
+	// ==================================================================================
+	// Neo4j is the ONLY source of truth for lineage - no fallbacks allowed
+	// System will FAIL to start if Neo4j is unavailable
+	// ==================================================================================
 
-	// Health check - GRACEFUL DEGRADATION: Fall back to rules-only if Presidio unavailable
-	healthCtx, healthCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer healthCancel()
-
-	if err := presidioClient.HealthCheck(healthCtx); err != nil {
-		log.Printf("⚠️ WARNING: Presidio ML service unavailable - falling back to rules-only classification mode")
-		log.Printf("   Error: %v", err)
-		log.Printf("   Expected location: %s", presidioURL)
-		log.Printf("   Classification will continue with reduced ML confidence (pattern matching + context only)")
-		classificationService.SetPresidioClient(nil) // Disable ML signal, enable rules-only mode
-	} else {
-		log.Printf("✅ Presidio ML connected and healthy at %s", presidioURL)
-		classificationService.SetPresidioClient(presidioClient)
-	}
-
-	// Neo4j configuration (optional - needed for semantic graph)
-	neo4jEnabled := os.Getenv("NEO4J_ENABLED")
 	neo4jURI := os.Getenv("NEO4J_URI")
 	if neo4jURI == "" {
-		neo4jURI = "bolt://127.0.0.1:7687" // Use IPv4 to avoid ::1 issues
+		neo4jURI = "bolt://127.0.0.1:7687" // Default
 	}
 	neo4jUsername := os.Getenv("NEO4J_USERNAME")
 	if neo4jUsername == "" {
@@ -122,27 +107,20 @@ func main() {
 		neo4jPassword = "password123"
 	}
 
-	// Create semantic lineage service (required by ingestion)
-	var semanticLineageService *service.SemanticLineageService
-	log.Printf("Neo4j Configuration: ENABLED=%s, URI=%s, USER=%s", neo4jEnabled, neo4jURI, neo4jUsername)
+	log.Printf("🔗 Connecting to Neo4j (REQUIRED) at %s...", neo4jURI)
 
-	if neo4jEnabled == "true" {
-		log.Printf("Attempting to connect to Neo4j at %s...", neo4jURI)
-		neo4jRepo, err := persistence.NewNeo4jRepository(neo4jURI, neo4jUsername, neo4jPassword)
-		if err != nil {
-			log.Printf("❌ WARNING: Neo4j connection failed: %v", err)
-			log.Printf("   Falling back to PostgreSQL-only lineage (Neo4j features will be unavailable)")
-			semanticLineageService = service.NewSemanticLineageService(nil, repo)
-		} else {
-			log.Printf("✅ Neo4j semantic lineage ENABLED at %s", neo4jURI)
-			log.Printf("   Assets will be synced to Neo4j graph during ingestion")
-			semanticLineageService = service.NewSemanticLineageService(neo4jRepo, repo)
-		}
-	} else {
-		log.Printf("ℹ️  Neo4j DISABLED (set NEO4J_ENABLED=true to enable)")
-		log.Printf("   Using PostgreSQL-only lineage (relational graph)")
-		semanticLineageService = service.NewSemanticLineageService(nil, repo)
+	neo4jRepo, err := persistence.NewNeo4jRepository(neo4jURI, neo4jUsername, neo4jPassword)
+	if err != nil {
+		log.Fatalf("❌ FATAL: Neo4j connection REQUIRED but failed: %v\n"+
+			"   Neo4j is mandatory for lineage - system cannot start without it.\n"+
+			"   Please ensure Neo4j is running at %s", err, neo4jURI)
 	}
+
+	log.Printf("✅ Neo4j lineage ONLINE (REQUIRED) at %s", neo4jURI)
+	log.Printf("   All asset lineage will be stored in Neo4j graph")
+
+	// Create semantic lineage service with mandatory Neo4j
+	semanticLineageService := service.NewSemanticLineageService(neo4jRepo, repo)
 
 	// Create remaining services
 	ingestionService := service.NewIngestionService(repo, classificationService, enrichmentService, semanticLineageService)
@@ -213,4 +191,11 @@ func main() {
 	}
 
 	log.Println("Server exited")
+}
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
 }

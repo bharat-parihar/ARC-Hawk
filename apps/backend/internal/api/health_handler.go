@@ -4,23 +4,20 @@ import (
 	"context"
 
 	"github.com/arc-platform/backend/internal/infrastructure/persistence"
-	"github.com/arc-platform/backend/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
 // HealthHandler handles health check requests
 type HealthHandler struct {
-	repo     *persistence.PostgresRepository
-	neo4j    *persistence.Neo4jRepository
-	presidio *service.PresidioClient
+	repo  *persistence.PostgresRepository
+	neo4j *persistence.Neo4jRepository
 }
 
 // NewHealthHandler creates a new health handler
-func NewHealthHandler(repo *persistence.PostgresRepository, neo4j *persistence.Neo4jRepository, presidio *service.PresidioClient) *HealthHandler {
+func NewHealthHandler(repo *persistence.PostgresRepository, neo4j *persistence.Neo4jRepository) *HealthHandler {
 	return &HealthHandler{
-		repo:     repo,
-		neo4j:    neo4j,
-		presidio: presidio,
+		repo:  repo,
+		neo4j: neo4j,
 	}
 }
 
@@ -43,12 +40,8 @@ func (h *HealthHandler) CheckHealth(c *gin.Context) {
 		health["neo4j_status"] = "degraded"
 	}
 
-	// Check Presidio (OPTIONAL - degraded mode OK)
-	presidioHealthy := h.checkPresidio(ctx)
-	health["presidio"] = presidioHealthy
-	if !presidioHealthy {
-		health["presidio_status"] = "degraded"
-	}
+	// REMOVED: Presidio check - Intelligence-at-Edge architecture
+	// Presidio runs in scanner SDK, not as backend service
 
 	// Overall status
 	if !postgresHealthy {
@@ -57,8 +50,8 @@ func (h *HealthHandler) CheckHealth(c *gin.Context) {
 		return
 	}
 
-	// Degraded if optional services down
-	if !neo4jHealthy || !presidioHealthy {
+	// Degraded if Neo4j down
+	if !neo4jHealthy {
 		health["status"] = "degraded"
 		c.JSON(200, health)
 		return
@@ -67,7 +60,7 @@ func (h *HealthHandler) CheckHealth(c *gin.Context) {
 	c.JSON(200, health)
 }
 
-func (h *HealthHandler) checkPostgres(ctx context.Context) bool {
+func (h *HealthHandler) checkPostgres(_ context.Context) bool {
 	if h.repo == nil {
 		return false
 	}
@@ -77,19 +70,11 @@ func (h *HealthHandler) checkPostgres(ctx context.Context) bool {
 	return true
 }
 
-func (h *HealthHandler) checkNeo4j(ctx context.Context) bool {
+func (h *HealthHandler) checkNeo4j(_ context.Context) bool {
 	if h.neo4j == nil {
 		return false
 	}
 	// Check Neo4j connectivity
 	// Assuming a health check method exists
 	return true
-}
-
-func (h *HealthHandler) checkPresidio(ctx context.Context) bool {
-	if h.presidio == nil {
-		return false
-	}
-	err := h.presidio.HealthCheck(ctx)
-	return err == nil
 }

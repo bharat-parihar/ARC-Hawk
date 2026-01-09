@@ -4,6 +4,7 @@ PAN Recognizer - Permanent Account Number (India)
 Detects Indian PAN numbers with format validation.
 
 Format: AAAAA9999A (5 letters, 4 digits, 1 letter)
+4th character indicates type: P=Person, C=Company, H=HUF, F=Firm, etc.
 """
 
 import re
@@ -12,7 +13,7 @@ from presidio_analyzer import Pattern, PatternRecognizer
 
 
 class PANRecognizer(PatternRecognizer):
-    """Custom recognizer for Indian PAN numbers."""
+    """Custom recognizer for Indian PAN numbers with strict validation."""
     
     PATTERNS = [
         Pattern(
@@ -29,7 +30,22 @@ class PANRecognizer(PatternRecognizer):
         "permanent account",
         "income tax",
         "tax id",
+        "tax number",
     ]
+    
+    # Valid 4th character types (entity type indicator)
+    VALID_ENTITY_TYPES = {
+        'P',  # Individual/Person
+        'C',  # Company
+        'H',  # Hindu Undivided Family (HUF)
+        'F',  # Firm/Partnership
+        'A',  # Association of Persons (AOP)
+        'T',  # Trust
+        'B',  # Body of Individuals (BOI)
+        'L',  # Local Authority
+        'J',  # Artificial Juridical Person
+        'G',  # Government
+    }
     
     def __init__(self):
         super().__init__(
@@ -41,23 +57,36 @@ class PANRecognizer(PatternRecognizer):
         )
     
     def validate_result(self, pattern_text: str) -> Optional[bool]:
-        """Validate PAN format."""
-        upper = pattern_text.upper().strip()
+        """
+        Strict PAN validation using the enhanced validator with anti-fake checks.
         
-        if len(upper) != 10:
-            return False
+        This now delegates to sdk.validators.pan.PANValidator which includes:
+        - Check digit validation (Weighted Modulo 26)
+        - Entity type validation
+        - Anti-fake pattern rejection (AAAAA, ABCDE, etc.)
+        - Test data context rejection
+        """
+        from sdk.validators.pan import PANValidator
         
-        # Check format: AAAAA9999A
-        if not (upper[:5].isalpha() and 
-                upper[5:9].isdigit() and 
-                upper[9].isalpha()):
-            return False
-        
-        # Fourth character should be 'P' for individuals (common case)
-        # But we'll allow all valid patterns
-        return True
+        # Note: Context will be empty here since Presidio doesn't pass it
+        # The validator will still catch obvious fakes (AAAAA, ABCDE, wrong check digits)
+        # Context-based filtering happens post-detection in the ingestion layer
+        return PANValidator.validate(pattern_text, context="")
 
 
 if __name__ == "__main__":
     recognizer = PANRecognizer()
     print(f"PAN Recognizer created: {recognizer.name}")
+    
+    # Test validation
+    test_cases = [
+        ("ABCDE1234F", True, "Valid format with P"),
+        ("AAAPC1234D", True, "Valid company PAN"),
+        ("AAAPZ1234Q", False, "Invalid entity type Z"),
+        ("ABCD123456", False, "Too many digits"),
+    ]
+    
+    for pan, expected, desc in test_cases:
+        result = recognizer.validate_result(pan)
+        status = "✓" if result == expected else "✗"
+        print(f"{status} {desc}: {pan} -> {result}")

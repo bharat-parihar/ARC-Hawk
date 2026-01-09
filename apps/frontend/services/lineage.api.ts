@@ -2,56 +2,10 @@
 // Updated to use /api/v1/lineage with 4-level hierarchy
 
 // 4-Level Hierarchy Types
-export interface SystemNode {
-    id: string;
-    type: 'system';
-    label: string;
-    metadata: {
-        host?: string;
-    };
-}
-
-export interface AssetNode {
-    id: string;
-    type: 'asset';
-    label: string;
-    metadata: {
-        path?: string;
-        environment?: string;
-    };
-}
-
-export interface DataCategoryNode {
-    id: string;
-    type: 'data_category';
-    label: string;
-    metadata: {
-        finding_count?: number;
-        risk_level?: string;
-        avg_confidence?: number;
-    };
-}
-
-export interface PIITypeNode {
-    id: string;
-    type: 'pii_type';
-    label: string;
-    metadata: {
-        count?: number;
-        max_risk?: string;
-        max_confidence?: number;
-    };
-}
-
-export type LineageNode = SystemNode | AssetNode | DataCategoryNode | PIITypeNode;
-
-export interface LineageEdge {
-    id: string;
-    source: string;
-    target: string;
-    type: 'CONTAINS' | 'HAS_CATEGORY' | 'INCLUDES';
-    metadata?: Record<string, any>;
-}
+import {
+    LineageNode,
+    LineageEdge,
+} from '../modules/lineage/lineage.types';
 
 export interface LineageHierarchy {
     nodes: LineageNode[];
@@ -61,7 +15,7 @@ export interface LineageHierarchy {
 export interface PIIAggregation {
     pii_type: string;
     total_findings: number;
-    risk_level: string;
+    risk_level: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
     confidence: number;
     affected_assets: number;
     affected_systems: number;
@@ -97,6 +51,38 @@ export async function fetchLineage(
 
     const data = await response.json();
     return data.data; // Backend wraps in { status: "success", data: {...} }
+}
+
+export async function getLineage(assetId?: string, depth?: number): Promise<LineageHierarchy> {
+    try {
+        const params = new URLSearchParams();
+        if (assetId) params.append('assetId', assetId);
+        if (depth) params.append('depth', depth.toString());
+
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/lineage${query}`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+
+        // Backend returns: { data: { hierarchy: { nodes, edges }, aggregations }, status }
+        // Extract the nested hierarchy data
+        if (result.data && result.data.hierarchy) {
+            return {
+                nodes: result.data.hierarchy.nodes || [],
+                edges: result.data.hierarchy.edges || []
+            };
+        }
+
+        // Fallback for empty/malformed response
+        return { nodes: [], edges: [] };
+    } catch (error) {
+        console.error('Failed to fetch lineage:', error);
+        throw error;
+    }
 }
 
 export async function fetchLineageStats(): Promise<LineageResponse['aggregations']> {

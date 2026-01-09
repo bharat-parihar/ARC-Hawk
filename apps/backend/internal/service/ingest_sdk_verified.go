@@ -94,16 +94,13 @@ func (s *IngestionService) processSingleSDKFinding(
 		return fmt.Errorf("failed to create classification: %w", err)
 	}
 
-	// 4. Sync to Neo4j (Phase 3 integration) - would need to add service field
-	// TODO: Add semanticLineageService field to IngestionService or call directly
-	/*
-		if s.semanticLineageService != nil {
-			if err := s.semanticLineageService.SyncFindingToGraph(ctx, finding, asset, classification); err != nil {
-				// Log but don't fail the ingestion
-				fmt.Printf("Warning: Failed to sync to Neo4j: %v\n", err)
-			}
+	// 4. Sync to Neo4j (Phase 3 integration)
+	if s.semanticLineage != nil {
+		if err := s.semanticLineage.SyncFindingToGraph(ctx, finding, asset, classification); err != nil {
+			// Log but don't fail the ingestion
+			fmt.Printf("Warning: Failed to sync to Neo4j: %v\n", err)
 		}
-	*/
+	}
 
 	return nil
 }

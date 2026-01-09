@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/arc-platform/backend/internal/service"
@@ -61,5 +63,23 @@ func (h *LineageHandlerV2) GetLineageStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
 		"stats":  hierarchy.Aggregations,
+	})
+}
+
+// SyncLineage handles POST /api/v1/lineage/sync
+// Triggers full sync from PostgreSQL to Neo4j
+func (h *LineageHandlerV2) SyncLineage(c *gin.Context) {
+	// Launch sync in background to avoid timeout
+	go func() {
+		// Create a new background context since request context will be cancelled
+		bgCtx := context.Background()
+		if err := h.semanticLineageService.SyncLineage(bgCtx); err != nil {
+			fmt.Printf("Async sync failed: %v\n", err)
+		}
+	}()
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "Lineage synchronization started in background",
 	})
 }

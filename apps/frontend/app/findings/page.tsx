@@ -35,10 +35,33 @@ export default function FindingsPage() {
                 severity: severityFilter
             });
 
-            // Polyfill legacy pagination structure if missing from API response (services return raw data)
+            // Explode findings: One row per match
+            const explodedFindings: FindingWithDetails[] = [];
+
+            result.findings.forEach(finding => {
+                if (finding.matches && finding.matches.length > 0) {
+                    finding.matches.forEach((match: string) => {
+                        // Create a clone of the finding for this specific match
+                        explodedFindings.push({
+                            ...finding,
+                            // Override matches to display only this specific match
+                            matches: [match],
+                            // Update ID to be unique for React keys (optional but good practice)
+                            id: `${finding.id}-${match}`
+                        });
+                    });
+                } else {
+                    // Fallback if no matches array
+                    explodedFindings.push(finding);
+                }
+            });
+
+            // Polyfill legacy pagination structure
             const data: FindingsResponse = {
-                findings: result.findings,
-                total: result.total,
+                findings: explodedFindings,
+                total: result.total, // Total findings count remains (or should update?) 
+                // Actually total should reflect number of rows, but backend pagination is by finding.
+                // It's acceptable to show exploded rows for the current page.
                 page: page,
                 page_size: 20,
                 total_pages: Math.ceil(result.total / 20)

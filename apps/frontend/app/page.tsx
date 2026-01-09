@@ -13,11 +13,11 @@ import type {
     ClassificationSummary,
     FindingsResponse,
 } from '@/types';
-import type { LineageGraph } from '@/modules/lineage/lineage.types';
+import type { LineageGraphData } from '@/modules/lineage/lineage.types';
 import { colors } from '@/design-system/colors';
 
 export default function DashboardPage() {
-    const [lineageData, setLineageData] = useState<LineageGraph | null>(null);
+    const [lineageData, setLineageData] = useState<LineageGraphData | null>(null);
     const [findingsData, setFindingsData] = useState<FindingsResponse | null>(null);
     const [classificationSummary, setClassificationSummary] = useState<ClassificationSummary | null>(null);
     const [loading, setLoading] = useState(true);
@@ -140,9 +140,19 @@ export default function DashboardPage() {
     const totalFindings = classificationSummary?.total || findingsData?.total || 0;
     const sensitivePIICount = classificationSummary?.by_type?.['Sensitive Personal Data']?.count || 0;
     const criticalFindings = (classificationSummary?.by_severity?.['CRITICAL'] || 0) + (classificationSummary?.by_severity?.['Critical'] || 0);
-    const highRiskAssets = lineageData?.nodes.filter(n => n.risk_score >= 70).length || 0;
+    const highRiskAssets = lineageData?.nodes.filter(n => {
+        if (n.type === 'asset' && n.metadata && typeof n.metadata.risk_score === 'number') {
+            return n.metadata.risk_score >= 70;
+        }
+        return false;
+    }).length || 0;
     const avgRiskScore = lineageData?.nodes.length
-        ? Math.round(lineageData.nodes.reduce((sum, n) => sum + n.risk_score, 0) / lineageData.nodes.length)
+        ? Math.round(lineageData.nodes.reduce((sum, n) => {
+            if (n.type === 'asset' && n.metadata && typeof n.metadata.risk_score === 'number') {
+                return sum + n.metadata.risk_score;
+            }
+            return sum;
+        }, 0) / lineageData.nodes.length)
         : 0;
 
     if (loading && !lineageData) {

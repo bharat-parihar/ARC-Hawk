@@ -101,10 +101,57 @@ class SharedAnalyzerEngine:
             supported_languages=[lang_code]
         )
         
+        # Register all custom recognizers for locked PII types
+        cls._register_custom_recognizers(analyzer)
+        
         print(f"[SDK] AnalyzerEngine initialized successfully")
         print(f"[SDK] Memory footprint: ~500-800MB (Small model)")
         
         return analyzer
+    
+    @classmethod
+    def _register_custom_recognizers(cls, analyzer: AnalyzerEngine) -> None:
+        """
+        Register all custom recognizers for the 11 locked PII types.
+        
+        Args:
+            analyzer: AnalyzerEngine instance to register recognizers with
+        """
+        print("[SDK] Registering custom recognizers for 11 locked PIIs...")
+        
+        # Import all custom recognizers
+        from sdk.recognizers.aadhaar import AadhaarRecognizer
+        from sdk.recognizers.pan import PANRecognizer  
+        from sdk.recognizers.credit_card import CreditCardRecognizer
+        from sdk.recognizers.passport import IndianPassportRecognizer
+        from sdk.recognizers.upi import UPIRecognizer
+        from sdk.recognizers.ifsc import IFSCRecognizer
+        from sdk.recognizers.bank_account import BankAccountRecognizer
+        from sdk.recognizers.phone import IndianPhoneRecognizer
+        from sdk.recognizers.email import EmailRecognizer
+        from sdk.recognizers.voter_id import VoterIDRecognizer
+        from sdk.recognizers.driving_license import DrivingLicenseRecognizer
+        
+        # Register each recognizer
+        recognizers = [
+            AadhaarRecognizer(),
+            PANRecognizer(),
+            CreditCardRecognizer(),
+            IndianPassportRecognizer(),
+            UPIRecognizer(),
+            IFSCRecognizer(),
+            BankAccountRecognizer(),
+            IndianPhoneRecognizer(),
+            EmailRecognizer(),
+            VoterIDRecognizer(),
+            DrivingLicenseRecognizer(),
+        ]
+        
+        for recognizer in recognizers:
+            analyzer.registry.add_recognizer(recognizer)
+            print(f"  ✓ Registered: {recognizer.name}")
+        
+        print(f"[SDK] Registered {len(recognizers)} custom recognizers")
     
     @classmethod
     def add_recognizer(cls, recognizer) -> None:

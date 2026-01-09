@@ -2,22 +2,28 @@
 
 import React from 'react';
 import { Handle, Position } from 'reactflow';
-import { NodeData } from './lineage.types';
+import type { LineageNode as LineageNodeType } from './lineage.types';
 import { getNodeColor } from '@/design-system/themes';
 import { colors } from '@/design-system/colors';
 import { theme } from '@/design-system/themes';
 
 interface LineageNodeProps {
-    data: NodeData;
+    data: LineageNodeType;
     id: string;
 }
 
 export default function LineageNode({ data, id }: LineageNodeProps) {
-    const { label, type, risk_score, metadata, expanded, onExpand, childCount, review_status } = data;
+    const { label, type, metadata } = data;
+    // Access properties from metadata or handle potential UI-injected props
+    const risk_score = (metadata as any)?.risk_score || 0;
+    const review_status = (metadata as any)?.review_status;
+    const expanded = (data as any).expanded;
+    const onExpand = (data as any).onExpand;
+    const childCount = (data as any).childCount;
     const [isHovered, setIsHovered] = React.useState(false);
 
     const nodeColors = getNodeColor(type, risk_score);
-    const showExpandControl = (type === 'system' || type === 'asset' || type === 'file' || type === 'table') && childCount && childCount > 0;
+    const showExpandControl = (type === 'system' || type === 'asset') && childCount && childCount > 0;
 
     // Determine node size based on type
     const getNodeSize = () => {
@@ -25,14 +31,10 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
             case 'system':
                 return { width: 280, minHeight: 100 };
             case 'asset':
-            case 'file':
-            case 'table':
                 return { width: 240, minHeight: 90 };
             case 'data_category':
-            case 'category':
                 return { width: 200, minHeight: 80 };
-            case 'finding':
-                return { width: 180, minHeight: 70 };
+            case 'pii_type':
             default:
                 return { width: 200, minHeight: 80 };
         }
@@ -45,12 +47,8 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
         switch (type) {
             case 'system': return '🏢';
             case 'asset': return '📦';
-            case 'file': return '📄';
-            case 'table': return '🗂️';
-            case 'data_category':
-            case 'category': return '🏷️';
-            case 'finding': return '🔍';
-            case 'classification': return '✓';
+            case 'data_category': return '🏷️';
+            case 'pii_type': return '🔍';
             default: return '📋';
         }
     };
@@ -177,7 +175,7 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
                 </div>
 
                 {/* Metadata */}
-                {metadata?.environment && type !== 'finding' && (
+                {(metadata as any)?.environment && (
                     <div
                         style={{
                             fontSize: theme.fontSize.sm, // Increased from xs
@@ -190,39 +188,11 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
                         }}
                     >
                         <span>📍</span>
-                        <span>{metadata.environment}</span>
+                        <span>{(metadata as any).environment}</span>
                     </div>
                 )}
 
-                {/* Finding-specific: severity and count */}
-                {type === 'finding' && metadata?.severity && (
-                    <div
-                        style={{
-                            fontSize: theme.fontSize.xs,
-                            marginTop: '8px',
-                            display: 'flex',
-                            gap: '8px',
-                            alignItems: 'center',
-                        }}
-                    >
-                        <span
-                            style={{
-                                fontWeight: theme.fontWeight.semibold,
-                                padding: '3px 8px',
-                                borderRadius: '6px',
-                                background: risk_score >= 90 ? 'rgba(220, 38, 38, 0.2)' : 'rgba(217, 119, 6, 0.2)',
-                                color: risk_score >= 90 ? colors.state.risk : colors.state.warning,
-                            }}
-                        >
-                            {metadata.severity}
-                        </span>
-                        {metadata.matches_count && (
-                            <span style={{ color: nodeColors.text, opacity: 0.7 }}>
-                                {metadata.matches_count} matches
-                            </span>
-                        )}
-                    </div>
-                )}
+
 
                 {/* Child count indicator */}
                 {childCount && childCount > 0 && (
