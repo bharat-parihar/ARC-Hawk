@@ -46,8 +46,9 @@ type SemanticGraph struct {
 	Edges []SemanticEdge `json:"edges"`
 }
 
-// SyncAssetToNeo4j syncs an asset and its findings to Neo4j (3-layer aggregated hierarchy)
-// Creates: System → Asset → DataCategory (NO individual finding nodes for scalability)
+// SyncAssetToNeo4j syncs an asset and its findings to Neo4j (3-level hierarchy - Frozen Semantic Contract)
+// Creates: System → Asset → PII_Category (specific PII types like IN_AADHAAR, CREDIT_CARD)
+// NO DataCategory abstraction layer - direct mapping to PII types
 func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID uuid.UUID) error {
 	// Skip if Neo4j is not available
 	if s.neo4jRepo == nil {
@@ -76,8 +77,8 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 		return fmt.Errorf("failed to create asset node: %w", err)
 	}
 
-	// 3. Create CONTAINS relationship (System → Asset)
-	if err := s.neo4jRepo.CreateContainsRelationship(ctx, systemID, asset.ID.String()); err != nil {
+	// 3. Create SYSTEM_OWNS_ASSET relationship (Frozen Semantic Contract)
+	if err := s.neo4jRepo.CreateHierarchyRelationship(ctx, systemID, asset.ID.String(), "SYSTEM_OWNS_ASSET"); err != nil {
 		return fmt.Errorf("failed to create system-asset relationship: %w", err)
 	}
 
@@ -87,11 +88,12 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 		return fmt.Errorf("failed to get findings: %w", err)
 	}
 
-	// 5. Aggregate findings by classification type (DataCategory level)
-	categoryMap := make(map[string]*DataCategoryAggregate)
+	// 5. Aggregate findings by PII TYPE (not classification type)
+	// Frozen Semantic Contract: PII_Category = specific PII types (IN_AADHAAR, CREDIT_CARD, etc.)
+	piiCategoryMap := make(map[string]*PIICategoryAggregate)
 
 	for _, finding := range findings {
-		// Get classification
+		// Get classification to extract PII type and DPDPA metadata
 		classifications, err := s.pgRepo.GetClassificationsByFindingID(ctx, finding.ID)
 		if err != nil || len(classifications) == 0 {
 			continue
@@ -99,29 +101,32 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 
 		classification := classifications[0]
 
-		// CRITICAL: Filter Non-PII and low-confidence at query time for Neo4j
-		// This ensures clean graph visualization even with store-all approach
-		if classification.ConfidenceScore < 0.45 || classification.ClassificationType == "Non-PII" {
+		// Filter low-confidence findings
+		if classification.ConfidenceScore < 0.45 {
 			continue
 		}
 
-		categoryKey := classification.ClassificationType
-		if _, exists := categoryMap[categoryKey]; !exists {
-			categoryMap[categoryKey] = &DataCategoryAggregate{
-				ClassificationType: classification.ClassificationType,
-				DPDPACategory:      classification.DPDPACategory,
-				RequiresConsent:    classification.RequiresConsent,
-				FindingCount:       0,
-				TotalConfidence:    0.0,
-				Findings:           []FindingAggregate{},
+		// Extract PII type from SubCategory (e.g., "IN_AADHAAR", "CREDIT_CARD")
+		piiType := classification.SubCategory
+		if piiType == "" {
+			continue
+		}
+
+		if _, exists := piiCategoryMap[piiType]; !exists {
+			piiCategoryMap[piiType] = &PIICategoryAggregate{
+				PIIType:         piiType,
+				DPDPACategory:   classification.DPDPACategory,
+				RequiresConsent: classification.RequiresConsent,
+				FindingCount:    0,
+				TotalConfidence: 0.0,
+				Findings:        []FindingAggregate{},
 			}
 		}
 
-		agg := categoryMap[categoryKey]
+		agg := piiCategoryMap[piiType]
 		agg.FindingCount++
 		agg.TotalConfidence += classification.ConfidenceScore
 
-		// Track pattern diversity (for metadata only, not creating nodes)
 		findingAgg := FindingAggregate{
 			PatternName: finding.PatternName,
 			Severity:    finding.Severity,
@@ -130,11 +135,9 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 		agg.Findings = append(agg.Findings, findingAgg)
 	}
 
-	// 6. Create DataCategory nodes ONLY (no individual finding nodes)
-	// This keeps the graph clean and scalable
-	for categoryType, agg := range categoryMap {
-		dataCategoryID := fmt.Sprintf("dc-%s-%s", asset.ID.String(), categoryType)
-
+	// 6. Create PII_Category nodes (3-level hierarchy - Frozen Semantic Contract)
+	// Each PII_Category represents a specific PII type (IN_AADHAAR, CREDIT_CARD, etc.)
+	for piiType, agg := range piiCategoryMap {
 		avgConfidence := agg.TotalConfidence / float64(agg.FindingCount)
 
 		// Aggregate pattern statistics for metadata
@@ -145,48 +148,54 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 			severityCounts[findingAgg.Severity]++
 		}
 
-		// Determine risk level based on classification type and confidence
-		riskLevel := getRiskLevel(categoryType, avgConfidence)
+		// Determine risk level based on PII type and confidence
+		riskLevel := getRiskLevelForPIIType(piiType, avgConfidence)
 
-		dataCategoryMetadata := map[string]interface{}{
-			"classification_type": categoryType,
-			"dpdpa_category":      agg.DPDPACategory,
-			"requires_consent":    agg.RequiresConsent,
-			"finding_count":       agg.FindingCount,
-			"avg_confidence":      avgConfidence,
-			"risk_level":          riskLevel,
-			"pattern_diversity":   len(patternCounts),
-			"pattern_counts":      patternCounts,
-			"severity_breakdown":  severityCounts,
+		piiCategoryMetadata := map[string]interface{}{
+			"pii_type":           piiType,
+			"dpdpa_category":     agg.DPDPACategory,
+			"requires_consent":   agg.RequiresConsent,
+			"finding_count":      agg.FindingCount,
+			"avg_confidence":     avgConfidence,
+			"risk_level":         riskLevel,
+			"pattern_diversity":  len(patternCounts),
+			"pattern_counts":     patternCounts,
+			"severity_breakdown": severityCounts,
 		}
 
-		// Create DataCategory node in Neo4j
-		if err := s.neo4jRepo.CreateDataCategoryNode(ctx, dataCategoryID, categoryType, dataCategoryMetadata); err != nil {
-			return fmt.Errorf("failed to create data category node: %w", err)
+		// Create PII_Category node in Neo4j
+		if err := s.neo4jRepo.CreatePIICategoryNode(ctx, piiType, piiCategoryMetadata); err != nil {
+			return fmt.Errorf("failed to create PII category node: %w", err)
 		}
 
-		// Create EXPOSES relationship (Asset → DataCategory)
-		if err := s.neo4jRepo.CreateContainsRelationship(ctx, asset.ID.String(), dataCategoryID); err != nil {
-			return fmt.Errorf("failed to create asset-category relationship: %w", err)
+		// Create ASSET_CONTAINS_PII relationship (Frozen Semantic Contract)
+		if err := s.neo4jRepo.CreateHierarchyRelationship(ctx, asset.ID.String(), piiType, "ASSET_CONTAINS_PII"); err != nil {
+			return fmt.Errorf("failed to create asset-pii relationship: %w", err)
 		}
 	}
 
 	return nil
 }
 
-// getRiskLevel determines risk level based on classification type and confidence
-func getRiskLevel(classificationType string, avgConfidence float64) string {
-	// Base risk by classification type
+// getRiskLevelForPIIType determines risk level based on specific PII type and confidence
+// Frozen Semantic Contract: Risk is based on the PII type itself, not abstracted classification
+func getRiskLevelForPIIType(piiType string, avgConfidence float64) string {
+	// Base risk by PII type (India-specific PII is critical)
 	baseRisk := map[string]int{
-		"Sensitive Personal Data": 3, // Critical
-		"Secrets":                 3, // Critical
-		"Personal Data":           2, // High
-		"Financial Data":          3, // Critical
-		"Health Data":             3, // Critical
-		"Biometric Data":          3, // Critical
+		"IN_AADHAAR":         3, // Critical - Government ID
+		"IN_PAN":             3, // Critical - Financial ID
+		"IN_PASSPORT":        3, // Critical - Government ID
+		"CREDIT_CARD":        3, // Critical - Financial Data
+		"IN_BANK_ACCOUNT":    3, // Critical - Financial Data
+		"IN_DRIVING_LICENSE": 2, // High - Government ID
+		"IN_VOTER_ID":        2, // High - Government ID
+		"IN_UPI":             2, // High - Financial
+		"IN_IFSC":            1, // Medium - Institutional
+		"IN_PHONE":           2, // High - Personal Contact
+		"EMAIL_ADDRESS":      2, // High - Personal Contact
 	}
 
-	risk, exists := baseRisk[classificationType]
+	risk, exists := baseRisk[piiType]
 	if !exists {
 		risk = 1 // Medium for unknown types
 	}
@@ -211,7 +220,18 @@ func getRiskLevel(classificationType string, avgConfidence float64) string {
 	}
 }
 
-// DataCategoryAggregate represents aggregated findings by classification
+// PIICategoryAggregate represents aggregated findings by specific PII type
+// Frozen Semantic Contract: Aggregate by PII type (IN_AADHAAR, CREDIT_CARD), not classification type
+type PIICategoryAggregate struct {
+	PIIType         string
+	DPDPACategory   string
+	RequiresConsent bool
+	FindingCount    int
+	TotalConfidence float64
+	Findings        []FindingAggregate
+}
+
+// DataCategoryAggregate is deprecated but kept for backward compatibility
 type DataCategoryAggregate struct {
 	ClassificationType string
 	DPDPACategory      string
@@ -228,47 +248,48 @@ type FindingAggregate struct {
 	Count       int
 }
 
-// GetSemanticGraph retrieves the aggregated semantic graph from Neo4j
+// GetSemanticGraph retrieves the semantic lineage graph
+// Uses ONLY Neo4j with 3-level frozen hierarchy: System → Asset → PII_Category
 func (s *SemanticLineageService) GetSemanticGraph(ctx context.Context, filters SemanticGraphFilters) (*SemanticGraph, error) {
-	// Check if Neo4j is available before attempting to use it
-	if s.neo4jRepo != nil {
-		// Try Neo4j first
-		nodes, edges, err := s.neo4jRepo.GetSemanticGraph(ctx, filters.SystemID, filters.RiskLevel)
-		if err != nil {
-			// Fallback to PostgreSQL if Neo4j query fails
-			return s.fallbackToPostgres(ctx, filters)
-		}
-
-		// Convert to semantic graph format
-		semanticNodes := make([]SemanticNode, len(nodes))
-		for i, node := range nodes {
-			semanticNodes[i] = SemanticNode{
-				ID:       node.ID,
-				Type:     node.Type,
-				Label:    node.Label,
-				Metadata: node.Metadata,
-			}
-		}
-
-		semanticEdges := make([]SemanticEdge, len(edges))
-		for i, edge := range edges {
-			semanticEdges[i] = SemanticEdge{
-				ID:       edge.ID,
-				Source:   edge.Source,
-				Target:   edge.Target,
-				Type:     edge.Type,
-				Metadata: edge.Metadata,
-			}
-		}
-
-		return &SemanticGraph{
-			Nodes: semanticNodes,
-			Edges: semanticEdges,
-		}, nil
+	// Neo4j is MANDATORY - no PostgreSQL fallback
+	if s.neo4jRepo == nil {
+		return nil, fmt.Errorf("neo4j repository not configured - semantic lineage unavailable")
 	}
 
-	// If Neo4j is not configured, use PostgreSQL fallback
-	return s.fallbackToPostgres(ctx, filters)
+	// Get graph from Neo4j (3-level hierarchy ONLY)
+	// Note: neo4jRepo expects separate string params, not a struct
+	nodes, edges, err := s.neo4jRepo.GetSemanticGraph(ctx, filters.SystemID, filters.RiskLevel)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get semantic graph from neo4j: %w", err)
+	}
+
+	// Convert Neo4j types to semantic types
+	semanticNodes := []SemanticNode{}
+	semanticEdges := []SemanticEdge{}
+
+	for _, node := range nodes {
+		semanticNodes = append(semanticNodes, SemanticNode{
+			ID:       node.ID,
+			Type:     node.Type,
+			Label:    node.Label,
+			Metadata: node.Metadata,
+		})
+	}
+
+	for _, edge := range edges {
+		semanticEdges = append(semanticEdges, SemanticEdge{
+			ID:       edge.ID,
+			Source:   edge.Source,
+			Target:   edge.Target,
+			Type:     edge.Type,
+			Metadata: edge.Metadata,
+		})
+	}
+
+	return &SemanticGraph{
+		Nodes: semanticNodes,
+		Edges: semanticEdges,
+	}, nil
 }
 
 // SemanticGraphFilters contains filtering options
@@ -276,82 +297,6 @@ type SemanticGraphFilters struct {
 	SystemID  string
 	RiskLevel string // high, medium, low
 	Category  string // PII category filter
-}
-
-// fallbackToPostgres builds semantic graph from PostgreSQL when Neo4j unavailable
-func (s *SemanticLineageService) fallbackToPostgres(ctx context.Context, _ SemanticGraphFilters) (*SemanticGraph, error) {
-	// Get assets from PostgreSQL
-	assets, err := s.pgRepo.ListAssets(ctx, 100, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list assets: %w", err)
-	}
-
-	nodes := []SemanticNode{}
-	edges := []SemanticEdge{}
-	nodeMap := make(map[string]bool)
-
-	// Build graph from PostgreSQL data (simplified aggregation)
-	systemMap := make(map[string]bool)
-
-	for _, asset := range assets {
-		// Check if asset has PII findings (skip pure infrastructure/non-PII assets for cleaner graph)
-		findingCount, err := s.pgRepo.CountFindings(ctx, repository.FindingFilters{AssetID: &asset.ID})
-		if err != nil || findingCount == 0 {
-			// If we can't efficiently check for Non-PII specifically in CountFindings without modifying it everywhere,
-			// we assume 0 findings = skip.
-			// The repo.CountFindings already excludes Non-PII if we modified it earlier!
-			// YES - we modified finding_repository.go CountFindings to auto-exclude Non-PII.
-			// So findingCount here will be 0 if all findings are Non-PII.
-			if findingCount == 0 {
-				continue
-			}
-		}
-
-		// Create system node
-		systemID := fmt.Sprintf("system-%s", asset.Host)
-		if !systemMap[systemID] {
-			nodes = append(nodes, SemanticNode{
-				ID:    systemID,
-				Type:  "system",
-				Label: asset.Host,
-				Metadata: map[string]interface{}{
-					"host":          asset.Host,
-					"source_system": asset.SourceSystem,
-				},
-			})
-			systemMap[systemID] = true
-		}
-
-		// Create asset node
-		assetID := asset.ID.String()
-		if !nodeMap[assetID] {
-			nodes = append(nodes, SemanticNode{
-				ID:    assetID,
-				Type:  "asset",
-				Label: asset.Name,
-				Metadata: map[string]interface{}{
-					"path":        asset.Path,
-					"risk_score":  asset.RiskScore,
-					"environment": asset.Environment,
-				},
-			})
-			nodeMap[assetID] = true
-
-			// Create HOSTS edge
-			edges = append(edges, SemanticEdge{
-				ID:       fmt.Sprintf("%s-hosts-%s", systemID, assetID),
-				Source:   systemID,
-				Target:   assetID,
-				Type:     "HOSTS",
-				Metadata: map[string]interface{}{},
-			})
-		}
-	}
-
-	return &SemanticGraph{
-		Nodes: nodes,
-		Edges: edges,
-	}, nil
 }
 
 // SyncLineage triggers a full synchronization of all assets to Neo4j

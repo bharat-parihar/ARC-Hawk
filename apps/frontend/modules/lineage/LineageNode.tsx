@@ -25,16 +25,15 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
     const nodeColors = getNodeColor(type, risk_score);
     const showExpandControl = (type === 'system' || type === 'asset') && childCount && childCount > 0;
 
-    // Determine node size based on type
+    // Determine node size based on type (3-level hierarchy)
     const getNodeSize = () => {
         switch (type) {
             case 'system':
                 return { width: 280, minHeight: 100 };
             case 'asset':
                 return { width: 240, minHeight: 90 };
-            case 'data_category':
-                return { width: 200, minHeight: 80 };
-            case 'pii_type':
+            case 'pii_category':
+                return { width: 220, minHeight: 85 };
             default:
                 return { width: 200, minHeight: 80 };
         }
@@ -42,13 +41,12 @@ export default function LineageNode({ data, id }: LineageNodeProps) {
 
     const size = getNodeSize();
 
-    // Get icon based on type
+    // Get icon based on type (3-level: System → Asset → PII_Category)
     const getIcon = () => {
         switch (type) {
             case 'system': return '🏢';
             case 'asset': return '📦';
-            case 'data_category': return '🏷️';
-            case 'pii_type': return '🔍';
+            case 'pii_category': return '🔐'; // Lock icon for PII
             default: return '📋';
         }
     };

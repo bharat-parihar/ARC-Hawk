@@ -3,33 +3,35 @@ package persistence
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
-// === Phase 3: 4-Level Hierarchy Methods ===
+// === Frozen Semantic Contract: 3-Level Hierarchy ===
+// Node Types: System → Asset → PII_Category
+// Edge Types: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
+// NO transformation edges - only risk associations
 
-// CreateDataCategoryNode creates or updates a DataCategory node
-func (r *Neo4jRepository) CreateDataCategoryNode(ctx context.Context, dataCategoryID, label string, metadata map[string]interface{}) error {
+// CreatePIICategoryNode creates or updates a PII_Category node
+// PII_Category represents specific PII types (IN_AADHAAR, CREDIT_CARD, etc.)
+func (r *Neo4jRepository) CreatePIICategoryNode(ctx context.Context, piiType string, metadata map[string]interface{}) error {
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
 	defer session.Close(ctx)
 
 	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
 		query := `
-			MERGE (dc:DataCategory {id: $id})
-			SET dc.name = $name,
-			    dc.dpdpa_category = $dpdpa_category,
-			    dc.requires_consent = $requires_consent,
-			    dc.finding_count = $finding_count,
-			    dc.avg_confidence = $avg_confidence,
-			    dc.risk_level = $risk_level,
-			    dc.updated_at = datetime()
-			RETURN dc
+			MERGE (pii:PII_Category {type: $type})
+			SET pii.pii_type = $type,
+			    pii.dpdpa_category = $dpdpa_category,
+			    pii.requires_consent = $requires_consent,
+			    pii.finding_count = $finding_count,
+			    pii.avg_confidence = $avg_confidence,
+			    pii.risk_level = $risk_level,
+			    pii.updated_at = datetime()
+			RETURN pii
 		`
 		params := map[string]interface{}{
-			"id":               dataCategoryID,
-			"name":             label,
+			"type":             piiType,
 			"dpdpa_category":   metadata["dpdpa_category"],
 			"requires_consent": metadata["requires_consent"],
 			"finding_count":    metadata["finding_count"],
@@ -43,49 +45,15 @@ func (r *Neo4jRepository) CreateDataCategoryNode(ctx context.Context, dataCatego
 	return err
 }
 
-// CreatePIITypeNode creates or updates a PIIType node with aggregations
-func (r *Neo4jRepository) CreatePIITypeNode(ctx context.Context, piiType string, metadata map[string]interface{}) error {
-	session := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
-	defer session.Close(ctx)
-
-	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
-		query := `
-			MERGE (pii:PIIType {type: $type})
-			ON CREATE SET
-				pii.count = $count,
-				pii.max_risk = $max_risk,
-				pii.max_confidence = $max_confidence,
-				pii.first_detected = $detected_at,
-				pii.last_detected = $detected_at
-			ON MATCH SET
-				pii.count = pii.count + $count,
-				pii.max_risk = CASE
-					WHEN $max_risk > pii.max_risk THEN $max_risk
-					ELSE pii.max_risk
-				END,
-				pii.max_confidence = CASE
-					WHEN $max_confidence > pii.max_confidence THEN $max_confidence
-					ELSE pii.max_confidence
-				END,
-				pii.last_detected = $detected_at
-			RETURN pii
-		`
-		params := map[string]interface{}{
-			"type":           piiType,
-			"count":          metadata["count"],
-			"max_risk":       metadata["max_risk"],
-			"max_confidence": metadata["max_confidence"],
-			"detected_at":    time.Now().Format(time.RFC3339),
-		}
-		_, err := tx.Run(ctx, query, params)
-		return nil, err
-	})
-
-	return err
-}
-
-// CreateHierarchyRelationship creates relationships in the 4-level hierarchy
+// CreateHierarchyRelationship creates relationships using frozen semantic contract
+// Allowed edge types: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
 func (r *Neo4jRepository) CreateHierarchyRelationship(ctx context.Context, parentID, childID, relType string) error {
+	// Handle legacy edge types before entering session
+	if relType == "CONTAINS" {
+		// Redirect to SYSTEM_OWNS_ASSET for backward compatibility
+		return r.CreateHierarchyRelationship(ctx, parentID, childID, "SYSTEM_OWNS_ASSET")
+	}
+
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
 	defer session.Close(ctx)
 
@@ -93,29 +61,24 @@ func (r *Neo4jRepository) CreateHierarchyRelationship(ctx context.Context, paren
 		var query string
 
 		switch relType {
-		case "CONTAINS": // System → Asset
+		case "SYSTEM_OWNS_ASSET": // System → Asset
 			query = `
-				MATCH (parent {id: $parentID})
-				MATCH (child {id: $childID})
-				MERGE (parent)-[r:CONTAINS]->(child)
+				MATCH (sys:System {id: $parentID})
+				MATCH (asset:Asset {id: $childID})
+				MERGE (sys)-[r:SYSTEM_OWNS_ASSET]->(asset)
+				SET r.updated_at = datetime()
 				RETURN r
 			`
-		case "HAS_CATEGORY": // Asset → DataCategory
+		case "ASSET_CONTAINS_PII": // Asset → PII_Category
 			query = `
 				MATCH (asset:Asset {id: $parentID})
-				MATCH (cat:DataCategory {id: $childID})
-				MERGE (asset)-[r:HAS_CATEGORY]->(cat)
-				RETURN r
-			`
-		case "INCLUDES": // DataCategory → PIIType
-			query = `
-				MATCH (cat:DataCategory {id: $parentID})
-				MATCH (pii:PIIType {type: $childID})
-				MERGE (cat)-[r:INCLUDES]->(pii)
+				MATCH (pii:PII_Category {type: $childID})
+				MERGE (asset)-[r:ASSET_CONTAINS_PII]->(pii)
+				SET r.updated_at = datetime()
 				RETURN r
 			`
 		default:
-			return nil, fmt.Errorf("unknown relationship type: %s", relType)
+			return nil, fmt.Errorf("unknown relationship type: %s (allowed: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII)", relType)
 		}
 
 		params := map[string]interface{}{
@@ -140,16 +103,15 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 	edgeMap := make(map[string]bool)
 
 	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
-		// FIXED: Use OPTIONAL MATCH to handle incomplete hierarchy
-		// This allows returning nodes even if the full 4-level path doesn't exist
+		// Frozen Semantic Contract: 3-level hierarchy query
+		// System → Asset → PII_Category (no intermediate DataCategory)
 		query := `
 			MATCH (sys:System)
-			OPTIONAL MATCH (sys)-[:CONTAINS]->(asset:Asset)
-			OPTIONAL MATCH (asset)-[:CONTAINS]->(cat:DataCategory)
-			OPTIONAL MATCH (cat)-[:INCLUDES]->(pii:PIIType)
+			OPTIONAL MATCH (sys)-[:SYSTEM_OWNS_ASSET]->(asset:Asset)
+			OPTIONAL MATCH (asset)-[:ASSET_CONTAINS_PII]->(pii:PII_Category)
 			WHERE ($systemFilter = '' OR sys.host = $systemFilter)
-			  AND ($riskFilter = '' OR pii.max_risk IS NULL OR pii.max_risk = $riskFilter)
-			RETURN sys, asset, cat, pii
+			  AND ($riskFilter = '' OR pii.risk_level IS NULL OR pii.risk_level = $riskFilter)
+			RETURN sys, asset, pii
 			ORDER BY sys.host, asset.name
 			LIMIT 1000
 		`
@@ -169,10 +131,9 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 		}
 
 		for _, record := range records {
-			// Get values from record first
+			// Get values from record (3-level hierarchy)
 			sysVal, _ := record.Get("sys")
 			assetVal, _ := record.Get("asset")
-			catVal, _ := record.Get("cat")
 			piiVal, _ := record.Get("pii")
 
 			// Process System node
@@ -214,28 +175,7 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 				}
 			}
 
-			// Process DataCategory node
-			if catVal != nil {
-				if node, ok := catVal.(neo4j.Node); ok {
-					id, _ := node.Props["id"].(string)
-					name, _ := node.Props["name"].(string)
-					if id != "" && !nodeMap[id] {
-						nodes = append(nodes, Node{
-							ID:    id,
-							Label: name,
-							Type:  "data_category",
-							Metadata: map[string]interface{}{
-								"finding_count":  node.Props["finding_count"],
-								"risk_level":     node.Props["risk_level"],
-								"avg_confidence": node.Props["avg_confidence"],
-							},
-						})
-						nodeMap[id] = true
-					}
-				}
-			}
-
-			// Process PIIType node
+			// Process PII_Category node (replaces old DataCategory + PIIType)
 			if piiVal != nil {
 				if node, ok := piiVal.(neo4j.Node); ok {
 					piiType, _ := node.Props["type"].(string)
@@ -243,11 +183,13 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 						nodes = append(nodes, Node{
 							ID:    piiType,
 							Label: piiType,
-							Type:  "pii_type",
+							Type:  "pii_category",
 							Metadata: map[string]interface{}{
-								"count":          node.Props["count"],
-								"max_risk":       node.Props["max_risk"],
-								"max_confidence": node.Props["max_confidence"],
+								"pii_type":       piiType,
+								"finding_count":  node.Props["finding_count"],
+								"risk_level":     node.Props["risk_level"],
+								"avg_confidence": node.Props["avg_confidence"],
+								"dpdpa_category": node.Props["dpdpa_category"],
 							},
 						})
 						nodeMap[piiType] = true
@@ -255,22 +197,22 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 				}
 			}
 
-			// Build edges from the node hierarchy
-			// System -> Asset
+			// Build edges from 3-level hierarchy
+			// System -> Asset (SYSTEM_OWNS_ASSET)
 			if sysVal != nil && assetVal != nil {
 				if sysNode, ok := sysVal.(neo4j.Node); ok {
 					if assetNode, ok := assetVal.(neo4j.Node); ok {
 						sysID, _ := sysNode.Props["id"].(string)
 						assetID, _ := assetNode.Props["id"].(string)
 						if sysID != "" && assetID != "" {
-							edgeID := fmt.Sprintf("%s-CONTAINS-%s", sysID, assetID)
+							edgeID := fmt.Sprintf("%s-SYSTEM_OWNS_ASSET-%s", sysID, assetID)
 							if !edgeMap[edgeID] {
 								edges = append(edges, Edge{
 									ID:     edgeID,
 									Source: sysID,
 									Target: assetID,
-									Type:   "CONTAINS",
-									Label:  "CONTAINS",
+									Type:   "SYSTEM_OWNS_ASSET",
+									Label:  "owns",
 								})
 								edgeMap[edgeID] = true
 							}
@@ -279,44 +221,21 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 				}
 			}
 
-			// Asset -> DataCategory
-			if assetVal != nil && catVal != nil {
+			// Asset -> PII_Category (ASSET_CONTAINS_PII)
+			if assetVal != nil && piiVal != nil {
 				if assetNode, ok := assetVal.(neo4j.Node); ok {
-					if catNode, ok := catVal.(neo4j.Node); ok {
+					if piiNode, ok := piiVal.(neo4j.Node); ok {
 						assetID, _ := assetNode.Props["id"].(string)
-						catID, _ := catNode.Props["id"].(string)
-						if assetID != "" && catID != "" {
-							edgeID := fmt.Sprintf("%s-HAS_CATEGORY-%s", assetID, catID)
+						piiType, _ := piiNode.Props["type"].(string)
+						if assetID != "" && piiType != "" {
+							edgeID := fmt.Sprintf("%s-ASSET_CONTAINS_PII-%s", assetID, piiType)
 							if !edgeMap[edgeID] {
 								edges = append(edges, Edge{
 									ID:     edgeID,
 									Source: assetID,
-									Target: catID,
-									Type:   "HAS_CATEGORY",
-									Label:  "HAS_CATEGORY",
-								})
-								edgeMap[edgeID] = true
-							}
-						}
-					}
-				}
-			}
-
-			// DataCategory -> PIIType
-			if catVal != nil && piiVal != nil {
-				if catNode, ok := catVal.(neo4j.Node); ok {
-					if piiNode, ok := piiVal.(neo4j.Node); ok {
-						catID, _ := catNode.Props["id"].(string)
-						piiType, _ := piiNode.Props["type"].(string)
-						if catID != "" && piiType != "" {
-							edgeID := fmt.Sprintf("%s-INCLUDES-%s", catID, piiType)
-							if !edgeMap[edgeID] {
-								edges = append(edges, Edge{
-									ID:     edgeID,
-									Source: catID,
 									Target: piiType,
-									Type:   "INCLUDES",
-									Label:  "INCLUDES",
+									Type:   "ASSET_CONTAINS_PII",
+									Label:  "contains",
 								})
 								edgeMap[edgeID] = true
 							}
@@ -344,20 +263,20 @@ func (r *Neo4jRepository) GetPIIAggregations(ctx context.Context) ([]map[string]
 	defer session.Close(ctx)
 
 	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		// FROZEN SEMANTIC CONTRACT: 3-level hierarchy only
+		// System -[:SYSTEM_OWNS_ASSET]-> Asset -[:ASSET_CONTAINS_PII]-> PII_Category
 		query := `
-			MATCH (pii:PIIType)
-			OPTIONAL MATCH (cat:DataCategory)-[:INCLUDES]->(pii)
-			OPTIONAL MATCH (asset:Asset)-[:HAS_CATEGORY]->(cat)
-			OPTIONAL MATCH (sys:System)-[:CONTAINS]->(asset)
+			MATCH (pii:PII_Category)
+			OPTIONAL MATCH (asset:Asset)-[:ASSET_CONTAINS_PII]->(pii)
+			OPTIONAL MATCH (sys:System)-[:SYSTEM_OWNS_ASSET]->(asset)
 			RETURN 
 			  pii.type as pii_type,
-			  pii.count as total_findings,
-			  pii.max_risk as risk_level,
-			  pii.max_confidence as confidence,
+			  pii.finding_count as total_findings,
+			  pii.risk_level as risk_level,
+			  pii.avg_confidence as confidence,
 			  COUNT(DISTINCT asset) as affected_assets,
-			  COUNT(DISTINCT sys) as affected_systems,
-			  COLLECT(DISTINCT cat.name) as categories
-			ORDER BY pii.count DESC
+			  COUNT(DISTINCT sys) as affected_systems
+			ORDER BY total_findings DESC
 		`
 
 		result, err := tx.Run(ctx, query, nil)
@@ -379,7 +298,7 @@ func (r *Neo4jRepository) GetPIIAggregations(ctx context.Context) ([]map[string]
 				"confidence":       record.Values[3],
 				"affected_assets":  record.Values[4],
 				"affected_systems": record.Values[5],
-				"categories":       record.Values[6],
+				// categories removed - not in frozen contract
 			}
 			aggregations = append(aggregations, agg)
 		}

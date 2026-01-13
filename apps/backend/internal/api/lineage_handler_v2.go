@@ -23,15 +23,18 @@ func NewLineageHandlerV2(semanticLineageService *service.SemanticLineageService)
 }
 
 // GetLineage handles GET /api/v1/lineage
-// Returns the complete 4-level hierarchy with aggregations
+// Returns the complete 3-level hierarchy (System → Asset → PII_Category)
 func (h *LineageHandlerV2) GetLineage(c *gin.Context) {
 	// Parse filters from query params
 	systemFilter := c.Query("system")
-	riskFilter := c.Query("risk") // CRITICAL, HIGH, MEDIUM
+	riskFilter := c.Query("risk") // Critical, High, Medium, Low
 
-	// Get hierarchy from Neo4j
+	// Get graph from Neo4j
 	ctx := c.Request.Context()
-	hierarchy, err := h.semanticLineageService.GetHierarchy(ctx, systemFilter, riskFilter)
+	graph, err := h.semanticLineageService.GetSemanticGraph(ctx, service.SemanticGraphFilters{
+		SystemID:  systemFilter,
+		RiskLevel: riskFilter,
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to retrieve lineage",
@@ -42,16 +45,16 @@ func (h *LineageHandlerV2) GetLineage(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
-		"data":   hierarchy,
+		"data":   graph,
 	})
 }
 
 // GetLineageStats handles GET /api/v1/lineage/stats
-// Returns aggregated statistics only
+// Returns aggregated statistics from the graph
 func (h *LineageHandlerV2) GetLineageStats(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	hierarchy, err := h.semanticLineageService.GetHierarchy(ctx, "", "")
+	graph, err := h.semanticLineageService.GetSemanticGraph(ctx, service.SemanticGraphFilters{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to retrieve stats",
@@ -60,10 +63,29 @@ func (h *LineageHandlerV2) GetLineageStats(c *gin.Context) {
 		return
 	}
 
+	// Calculate stats from graph
+	stats := map[string]interface{}{
+		"total_systems":        countNodesByType(graph.Nodes, "system"),
+		"total_assets":         countNodesByType(graph.Nodes, "asset"),
+		"total_pii_categories": countNodesByType(graph.Nodes, "pii_category"),
+		"total_edges":          len(graph.Edges),
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
-		"stats":  hierarchy.Aggregations,
+		"stats":  stats,
 	})
+}
+
+// Helper function to count nodes by type
+func countNodesByType(nodes []service.SemanticNode, nodeType string) int {
+	count := 0
+	for _, node := range nodes {
+		if node.Type == nodeType {
+			count++
+		}
+	}
+	return count
 }
 
 // SyncLineage handles POST /api/v1/lineage/sync

@@ -94,11 +94,12 @@ func (s *IngestionService) processSingleSDKFinding(
 		return fmt.Errorf("failed to create classification: %w", err)
 	}
 
-	// 4. Sync to Neo4j (Phase 3 integration)
+	// 4. Sync asset to Neo4j (3-level hierarchy: System → Asset → PII_Category)
+	// Note: This aggregates ALL findings for this asset, not individual findings
 	if s.semanticLineage != nil {
-		if err := s.semanticLineage.SyncFindingToGraph(ctx, finding, asset, classification); err != nil {
+		if err := s.semanticLineage.SyncAssetToNeo4j(ctx, asset.ID); err != nil {
 			// Log but don't fail the ingestion
-			fmt.Printf("Warning: Failed to sync to Neo4j: %v\n", err)
+			fmt.Printf("Warning: Failed to sync asset to Neo4j: %v\n", err)
 		}
 	}
 

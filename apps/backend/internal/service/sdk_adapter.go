@@ -99,6 +99,8 @@ func (a *SDKAdapter) MapToFinding(vf *VerifiedFinding, scanRunID, assetID uuid.U
 }
 
 // MapToClassification creates a Classification entity from SDK finding
+// CRITICAL CONTRACT: SubCategory MUST equal vf.PIIType for lineage aggregation
+// Semantic lineage service relies on SubCategory to create PII_Category nodes in Neo4j graph
 func (a *SDKAdapter) MapToClassification(vf *VerifiedFinding, findingID uuid.UUID) *entity.Classification {
 	classificationType := mapPIITypeToClassification(vf.PIIType)
 	dpdpaCategory := getDPDPACategory(vf.PIIType)
@@ -110,7 +112,7 @@ func (a *SDKAdapter) MapToClassification(vf *VerifiedFinding, findingID uuid.UUI
 		ID:                 uuid.New(),
 		FindingID:          findingID,
 		ClassificationType: classificationType,
-		SubCategory:        vf.PIIType,
+		SubCategory:        vf.PIIType, // CRITICAL: Must be PII type for lineage (IN_AADHAAR, CREDIT_CARD, etc.)
 		ConfidenceScore:    finalScore,
 		Justification:      generateJustification(vf),
 		DPDPACategory:      dpdpaCategory,

@@ -124,7 +124,6 @@ func main() {
 
 	// Create remaining services
 	ingestionService := service.NewIngestionService(repo, classificationService, enrichmentService, semanticLineageService)
-	lineageService := service.NewLineageService(repo)
 	findingsService := service.NewFindingsService(repo)
 	assetService := service.NewAssetService(repo)
 	datasetService := service.NewDatasetService(repo)
@@ -132,14 +131,13 @@ func main() {
 	// Phase 2: SDK-verified ingestion handler
 	sdkIngestHandler := api.NewSDKIngestHandler(ingestionService)
 
-	// Phase 3: Unified lineage handler
+	// Phase 3: Unified lineage handler (V2 - 3-level hierarchy only)
 	lineageHandlerV2 := api.NewLineageHandlerV2(semanticLineageService)
 
-	// Initialize router
+	// Initialize router (NO old lineage service)
 	r := gin.Default()
 	apiRouter := api.NewRouter(
 		ingestionService,
-		lineageService,
 		classificationService,
 		classificationSummaryService,
 		findingsService,

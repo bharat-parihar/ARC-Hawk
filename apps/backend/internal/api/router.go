@@ -11,7 +11,6 @@ import (
 // Router holds all handlers
 type Router struct {
 	ingestionHandler      *IngestionHandler
-	lineageHandler        *LineageHandler
 	classificationHandler *ClassificationHandler
 	findingsHandler       *FindingsHandler
 	assetHandler          *AssetHandler
@@ -22,7 +21,6 @@ type Router struct {
 // NewRouter creates a new router with all handlers
 func NewRouter(
 	ingestionService *service.IngestionService,
-	lineageService *service.LineageService,
 	classificationService *service.ClassificationService,
 	classificationSummaryService *service.ClassificationSummaryService,
 	findingsService *service.FindingsService,
@@ -32,7 +30,6 @@ func NewRouter(
 ) *Router {
 	return &Router{
 		ingestionHandler:      NewIngestionHandler(ingestionService),
-		lineageHandler:        NewLineageHandler(lineageService),
 		classificationHandler: NewClassificationHandler(classificationService, classificationSummaryService),
 		findingsHandler:       NewFindingsHandler(findingsService),
 		assetHandler:          NewAssetHandler(assetService),
@@ -75,18 +72,13 @@ func (r *Router) SetupRoutes(
 		// Scan ingestion
 		scans := v1.Group("/scans")
 		{
-			// LEGACY: Unverified ingestion (still active for backward compat)
-			// TODO: Deprecate after scanner migration to SDK verified-only
-			scans.POST("/ingest", func(c *gin.Context) {
-				c.Header("Warning", "299 - \"/api/v1/scans/ingest\" is deprecated and will be removed. Use \"/api/v1/scans/ingest-verified\" instead.")
-				r.ingestionHandler.IngestScan(c)
-			})
+			// PRODUCTION: SDK-verified ingestion only (Intelligence-at-Edge)
+			scans.POST("/ingest-verified", sdkIngestHandler.IngestVerified)
+
+			// Scan management
 			scans.GET("/latest", r.ingestionHandler.GetLatestScan)
 			scans.GET("/:id", r.ingestionHandler.GetScanStatus)
 			scans.DELETE("/clear", r.ingestionHandler.ClearScanData)
-
-			// RECOMMENDED: SDK-verified ingestion (Intelligence-at-Edge)
-			scans.POST("/ingest-verified", sdkIngestHandler.IngestVerified)
 		}
 
 		// Phase 3: Unified lineage (NEW - Neo4j only)

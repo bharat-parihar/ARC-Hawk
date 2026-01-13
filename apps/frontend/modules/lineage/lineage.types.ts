@@ -1,6 +1,7 @@
-// Lineage Graph Types - Phase 3: 4-Level Hierarchy
+// Lineage Graph Types - Frozen Semantic Contract: 3-Level Hierarchy
+// System → Asset → PII_Category (no intermediate DataCategory)
 
-export type NodeType = 'system' | 'asset' | 'data_category' | 'pii_type';
+export type NodeType = 'system' | 'asset' | 'pii_category';
 
 export interface BaseNode {
     id: string;
@@ -13,6 +14,8 @@ export interface SystemNode extends BaseNode {
     type: 'system';
     metadata: {
         host?: string;
+        source_system?: string;
+        environment?: string;
     };
 }
 
@@ -25,31 +28,25 @@ export interface AssetNode extends BaseNode {
     };
 }
 
-export interface DataCategoryNode extends BaseNode {
-    type: 'data_category';
+export interface PIICategoryNode extends BaseNode {
+    type: 'pii_category';
     metadata: {
+        pii_type?: string; // IN_AADHAAR, CREDIT_CARD, etc.
         finding_count?: number;
-        risk_level?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+        risk_level?: 'Critical' | 'High' | 'Medium' | 'Low';
         avg_confidence?: number;
+        dpdpa_category?: string;
     };
 }
 
-export interface PIITypeNode extends BaseNode {
-    type: 'pii_type';
-    metadata: {
-        count?: number;
-        max_risk?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-        max_confidence?: number;
-    };
-}
+export type LineageNode = SystemNode | AssetNode | PIICategoryNode;
 
-export type LineageNode = SystemNode | AssetNode | DataCategoryNode | PIITypeNode;
-
+// Frozen Semantic Contract: Only these edge types allowed
 export interface LineageEdge {
     id: string;
     source: string;
     target: string;
-    type: 'CONTAINS' | 'HAS_CATEGORY' | 'INCLUDES';
+    type: 'SYSTEM_OWNS_ASSET' | 'ASSET_CONTAINS_PII';
     label?: string;
     metadata?: Record<string, any>;
 }
@@ -61,30 +58,28 @@ export interface LineageGraphData {
 
 // Visual layout configuration
 export const NODE_COLORS: Record<NodeType, string> = {
-    system: '#3b82f6',      // Blue
-    asset: '#10b981',       // Green
-    data_category: '#f59e0b', // Orange
-    pii_type: '#ef4444',    // Red
+    system: '#3b82f6',      // Blue - Infrastructure
+    asset: '#10b981',       // Green - Data containers
+    pii_category: '#ef4444', // Red - PII risk
 };
 
 export const NODE_SIZES: Record<NodeType, number> = {
     system: 60,
     asset: 50,
-    data_category: 45,
-    pii_type: 40,
+    pii_category: 45,
 };
 
-// Risk level colors
+// Risk level colors (frozen contract)
 export const RISK_COLORS = {
-    CRITICAL: '#dc2626',
-    HIGH: '#f97316',
-    MEDIUM: '#fbbf24',
-    LOW: '#4ade80',
+    Critical: '#dc2626',
+    High: '#f97316',
+    Medium: '#fbbf24',
+    Low: '#4ade80',
 };
 
 // Graph Layout Configuration
 export const DEFAULT_LAYOUT_CONFIG = {
-    rankdir: 'LR',
+    rankdir: 'LR', // Left to right: System → Asset → PII
     nodesep: 80,
     ranksep: 150,
     edgesep: 50,

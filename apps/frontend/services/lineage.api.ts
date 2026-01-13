@@ -60,7 +60,7 @@ export async function getLineage(assetId?: string, depth?: number): Promise<Line
         if (depth) params.append('depth', depth.toString());
 
         const query = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}/lineage${query}`);
+        const response = await fetch(`${API_BASE}/api/v1/lineage${query}`);
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -119,5 +119,5 @@ export const lineageApi = {
     fetchLineage,
     fetchLineageStats,
     getSemanticGraph,
-    getLineage: fetchLineage,
+    getLineage, // Use the actual getLineage function, not fetchLineage
 };
