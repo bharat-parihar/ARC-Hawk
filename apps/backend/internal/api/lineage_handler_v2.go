@@ -43,9 +43,36 @@ func (h *LineageHandlerV2) GetLineage(c *gin.Context) {
 		return
 	}
 
+	// Calculate aggregations
+	totalSystems := 0
+	totalAssets := 0
+	totalPIITypes := 0
+
+	for _, node := range graph.Nodes {
+		switch node.Type {
+		case "system":
+			totalSystems++
+		case "asset":
+			totalAssets++
+		case "pii_category":
+			totalPIITypes++
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
-		"data":   graph,
+		"data": gin.H{
+			"hierarchy": gin.H{
+				"nodes": graph.Nodes,
+				"edges": graph.Edges,
+			},
+			"aggregations": gin.H{
+				"total_systems":   totalSystems,
+				"total_assets":    totalAssets,
+				"total_pii_types": totalPIITypes,
+				"by_pii_type":     []interface{}{}, // TODO: Implement detailed PII aggregations
+			},
+		},
 	})
 }
 

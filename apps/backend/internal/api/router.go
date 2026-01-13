@@ -16,6 +16,7 @@ type Router struct {
 	assetHandler          *AssetHandler
 	graphHandler          *GraphHandler
 	datasetHandler        *DatasetHandler
+	scanTriggerHandler    *ScanTriggerHandler
 }
 
 // NewRouter creates a new router with all handlers
@@ -35,6 +36,7 @@ func NewRouter(
 		assetHandler:          NewAssetHandler(assetService),
 		graphHandler:          NewGraphHandler(semanticLineageService),
 		datasetHandler:        NewDatasetHandler(datasetService),
+		scanTriggerHandler:    NewScanTriggerHandler(),
 	}
 }
 
@@ -75,6 +77,9 @@ func (r *Router) SetupRoutes(
 			// PRODUCTION: SDK-verified ingestion only (Intelligence-at-Edge)
 			scans.POST("/ingest-verified", sdkIngestHandler.IngestVerified)
 
+			// Scan trigger
+			scans.POST("/trigger", r.scanTriggerHandler.TriggerScan)
+
 			// Scan management
 			scans.GET("/latest", r.ingestionHandler.GetLatestScan)
 			scans.GET("/:id", r.ingestionHandler.GetScanStatus)
@@ -86,16 +91,6 @@ func (r *Router) SetupRoutes(
 		v1.GET("/lineage/stats", lineageHandlerV2.GetLineageStats)
 		v1.POST("/lineage/sync", lineageHandlerV2.SyncLineage) // Added manual sync
 
-		// DEPRECATED: Old lineage endpoint (PostgreSQL fallback) - REMOVED
-		v1.GET("/lineage-old", func(c *gin.Context) {
-			c.JSON(410, gin.H{
-				"error":            "This endpoint has been permanently removed",
-				"migration":        "Use /api/v1/lineage instead (Neo4j-based lineage)",
-				"deprecated_since": "2026-01-09",
-				"reason":           "Intelligence-at-Edge: Neo4j is now mandatory",
-			})
-		})
-
 		// Semantic Graph (NEW - Aggregated Neo4j Graph)
 		graph := v1.Group("/graph")
 		{
@@ -106,16 +101,6 @@ func (r *Router) SetupRoutes(
 		classification := v1.Group("/classification")
 		{
 			classification.GET("/summary", r.classificationHandler.GetClassificationSummary)
-
-			// DEPRECATED: Backend classification - REMOVED
-			classification.POST("/predict", func(c *gin.Context) {
-				c.JSON(410, gin.H{
-					"error":            "This endpoint has been permanently removed",
-					"migration":        "Classification now handled by scanner SDK only",
-					"deprecated_since": "2026-01-09",
-					"reason":           "Intelligence-at-Edge: All ML/validation in scanner",
-				})
-			})
 		}
 
 		// Findings

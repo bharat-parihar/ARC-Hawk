@@ -19,7 +19,7 @@ class PANRecognizer(PatternRecognizer):
         Pattern(
             name="PAN (AAAAA9999A)",
             regex=r"(?i)\b[A-Z]{5}[0-9]{4}[A-Z]\b",
-            score=0.4
+            score=0.9  # High score because we have strict format+checksum validation
         ),
     ]
     

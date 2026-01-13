@@ -76,7 +76,7 @@ export default function DashboardPage() {
 
             const [classification, graphData, lastScan] = await Promise.all([
                 classificationApi.getSummary(),
-                lineageApi.getSemanticGraph({}),
+                lineageApi.getLineage(undefined, undefined),
                 scansApi.getLastScanRun()
             ]);
 

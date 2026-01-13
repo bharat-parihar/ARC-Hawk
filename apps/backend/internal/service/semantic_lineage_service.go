@@ -36,7 +36,7 @@ type SemanticEdge struct {
 	ID       string                 `json:"id"`
 	Source   string                 `json:"source"`
 	Target   string                 `json:"target"`
-	Type     string                 `json:"type"` // HOSTS, CONTAINS, HAS_FINDING
+	Type     string                 `json:"type"` // SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
 	Metadata map[string]interface{} `json:"metadata"`
 }
 
@@ -50,16 +50,22 @@ type SemanticGraph struct {
 // Creates: System → Asset → PII_Category (specific PII types like IN_AADHAAR, CREDIT_CARD)
 // NO DataCategory abstraction layer - direct mapping to PII types
 func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID uuid.UUID) error {
+	fmt.Printf("🔄 [SYNC] Starting SyncAssetToNeo4j for asset: %s\n", assetID)
+
 	// Skip if Neo4j is not available
 	if s.neo4jRepo == nil {
+		fmt.Printf("⚠️  [SYNC] Neo4j repository not configured - skipping sync for asset: %s\n", assetID)
 		return nil
 	}
 
 	// Get asset from PostgreSQL
 	asset, err := s.pgRepo.GetAssetByID(ctx, assetID)
 	if err != nil {
+		fmt.Printf("❌ [SYNC] Failed to get asset %s from PostgreSQL: %v\n", assetID, err)
 		return fmt.Errorf("failed to get asset: %w", err)
 	}
+	fmt.Printf("✅ [SYNC] Retrieved asset from PostgreSQL: %s (Host: %s, Path: %s)\n",
+		asset.Name, asset.Host, asset.Path)
 
 	// 1. Create/Update System node
 	systemID := fmt.Sprintf("system-%s", asset.Host)
@@ -69,33 +75,46 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 		"environment":   asset.Environment,
 	}
 	if err := s.neo4jRepo.CreateSystemNode(ctx, systemID, asset.Host, systemMetadata); err != nil {
+		fmt.Printf("❌ [SYNC] Failed to create System node: %s - %v\n", systemID, err)
 		return fmt.Errorf("failed to create system node: %w", err)
 	}
+	fmt.Printf("✅ [SYNC] Created/Updated System node: %s\n", systemID)
 
 	// 2. Create/Update Asset node
 	if err := s.neo4jRepo.CreateAssetNode(ctx, asset); err != nil {
+		fmt.Printf("❌ [SYNC] Failed to create Asset node: %s - %v\n", asset.ID, err)
 		return fmt.Errorf("failed to create asset node: %w", err)
 	}
+	fmt.Printf("✅ [SYNC] Created/Updated Asset node: %s\n", asset.ID)
 
 	// 3. Create SYSTEM_OWNS_ASSET relationship (Frozen Semantic Contract)
 	if err := s.neo4jRepo.CreateHierarchyRelationship(ctx, systemID, asset.ID.String(), "SYSTEM_OWNS_ASSET"); err != nil {
+		fmt.Printf("❌ [SYNC] Failed to create SYSTEM_OWNS_ASSET relationship: %s → %s - %v\n",
+			systemID, asset.ID, err)
 		return fmt.Errorf("failed to create system-asset relationship: %w", err)
 	}
+	fmt.Printf("✅ [SYNC] Created SYSTEM_OWNS_ASSET: %s → %s\n", systemID, asset.ID)
 
 	// 4. Get findings for this asset
 	findings, err := s.pgRepo.ListFindings(ctx, repository.FindingFilters{AssetID: &assetID}, 1000, 0)
 	if err != nil {
+		fmt.Printf("❌ [SYNC] Failed to get findings for asset %s: %v\n", assetID, err)
 		return fmt.Errorf("failed to get findings: %w", err)
 	}
+	fmt.Printf("📊 [SYNC] Retrieved %d findings from PostgreSQL for asset: %s\n", len(findings), assetID)
 
 	// 5. Aggregate findings by PII TYPE (not classification type)
 	// Frozen Semantic Contract: PII_Category = specific PII types (IN_AADHAAR, CREDIT_CARD, etc.)
 	piiCategoryMap := make(map[string]*PIICategoryAggregate)
+	skippedCount := 0
+	lowConfidenceCount := 0
+	missingPIITypeCount := 0
 
 	for _, finding := range findings {
 		// Get classification to extract PII type and DPDPA metadata
 		classifications, err := s.pgRepo.GetClassificationsByFindingID(ctx, finding.ID)
 		if err != nil || len(classifications) == 0 {
+			skippedCount++
 			continue
 		}
 
@@ -103,12 +122,14 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 
 		// Filter low-confidence findings
 		if classification.ConfidenceScore < 0.45 {
+			lowConfidenceCount++
 			continue
 		}
 
 		// Extract PII type from SubCategory (e.g., "IN_AADHAAR", "CREDIT_CARD")
 		piiType := classification.SubCategory
 		if piiType == "" {
+			missingPIITypeCount++
 			continue
 		}
 
@@ -135,8 +156,16 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 		agg.Findings = append(agg.Findings, findingAgg)
 	}
 
+	fmt.Printf("📊 [SYNC] Aggregation Summary:\n")
+	fmt.Printf("   - Total findings processed: %d\n", len(findings))
+	fmt.Printf("   - Unique PII types found: %d\n", len(piiCategoryMap))
+	fmt.Printf("   - Skipped (no classification): %d\n", skippedCount)
+	fmt.Printf("   - Skipped (low confidence <0.45): %d\n", lowConfidenceCount)
+	fmt.Printf("   - Skipped (missing PII type): %d\n", missingPIITypeCount)
+
 	// 6. Create PII_Category nodes (3-level hierarchy - Frozen Semantic Contract)
 	// Each PII_Category represents a specific PII type (IN_AADHAAR, CREDIT_CARD, etc.)
+	piiNodesCreated := 0
 	for piiType, agg := range piiCategoryMap {
 		avgConfidence := agg.TotalConfidence / float64(agg.FindingCount)
 
@@ -165,14 +194,28 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 
 		// Create PII_Category node in Neo4j
 		if err := s.neo4jRepo.CreatePIICategoryNode(ctx, piiType, piiCategoryMetadata); err != nil {
+			fmt.Printf("❌ [SYNC] Failed to create PII_Category node: %s - %v\n", piiType, err)
 			return fmt.Errorf("failed to create PII category node: %w", err)
 		}
 
 		// Create ASSET_CONTAINS_PII relationship (Frozen Semantic Contract)
 		if err := s.neo4jRepo.CreateHierarchyRelationship(ctx, asset.ID.String(), piiType, "ASSET_CONTAINS_PII"); err != nil {
+			fmt.Printf("❌ [SYNC] Failed to create ASSET_CONTAINS_PII relationship: %s → %s - %v\n",
+				asset.ID, piiType, err)
 			return fmt.Errorf("failed to create asset-pii relationship: %w", err)
 		}
+
+		fmt.Printf("✅ [SYNC] Created PII_Category: %s (Count: %d, Avg Confidence: %.2f, Risk: %s)\n",
+			piiType, agg.FindingCount, avgConfidence, riskLevel)
+		piiNodesCreated++
 	}
+
+	fmt.Printf("🎉 [SYNC] Successfully synced asset %s to Neo4j:\n", assetID)
+	fmt.Printf("   - System node: %s\n", systemID)
+	fmt.Printf("   - Asset node: %s\n", asset.ID)
+	fmt.Printf("   - PII_Category nodes: %d\n", piiNodesCreated)
+	fmt.Printf("   - Total relationships: %d (1 SYSTEM_OWNS_ASSET + %d ASSET_CONTAINS_PII)\n",
+		1+piiNodesCreated, piiNodesCreated)
 
 	return nil
 }
@@ -229,16 +272,6 @@ type PIICategoryAggregate struct {
 	FindingCount    int
 	TotalConfidence float64
 	Findings        []FindingAggregate
-}
-
-// DataCategoryAggregate is deprecated but kept for backward compatibility
-type DataCategoryAggregate struct {
-	ClassificationType string
-	DPDPACategory      string
-	RequiresConsent    bool
-	FindingCount       int
-	TotalConfidence    float64
-	Findings           []FindingAggregate
 }
 
 // FindingAggregate represents aggregated findings by pattern
@@ -301,7 +334,10 @@ type SemanticGraphFilters struct {
 
 // SyncLineage triggers a full synchronization of all assets to Neo4j
 func (s *SemanticLineageService) SyncLineage(ctx context.Context) error {
+	fmt.Printf("🔄 [FULL-SYNC] Starting full lineage synchronization...\n")
+
 	if s.neo4jRepo == nil {
+		fmt.Printf("❌ [FULL-SYNC] Neo4j repository not configured\n")
 		return fmt.Errorf("neo4j repository not configured")
 	}
 
@@ -309,21 +345,24 @@ func (s *SemanticLineageService) SyncLineage(ctx context.Context) error {
 	// Use a large limit for now, or implement pagination
 	assets, err := s.pgRepo.ListAssets(ctx, 10000, 0)
 	if err != nil {
+		fmt.Printf("❌ [FULL-SYNC] Failed to list assets: %v\n", err)
 		return fmt.Errorf("failed to list assets: %w", err)
 	}
+	fmt.Printf("📊 [FULL-SYNC] Found %d assets to synchronize\n", len(assets))
 
 	successCount := 0
 	errorCount := 0
 
-	for _, asset := range assets {
+	for i, asset := range assets {
+		fmt.Printf("🔄 [FULL-SYNC] Syncing asset %d/%d: %s\n", i+1, len(assets), asset.Name)
 		if err := s.SyncAssetToNeo4j(ctx, asset.ID); err != nil {
-			fmt.Printf("Error syncing asset %s: %v\n", asset.Name, err)
+			fmt.Printf("❌ [FULL-SYNC] Error syncing asset %s: %v\n", asset.Name, err)
 			errorCount++
 		} else {
 			successCount++
 		}
 	}
 
-	fmt.Printf("Sync completed: %d assets synced, %d failed\n", successCount, errorCount)
+	fmt.Printf("🎉 [FULL-SYNC] Sync completed: %d assets synced, %d failed\n", successCount, errorCount)
 	return nil
 }

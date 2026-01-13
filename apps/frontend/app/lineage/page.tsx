@@ -26,7 +26,6 @@ export default function DashboardPage() {
     const [error, setError] = useState<string | null>(null);
 
     // Graph state
-    const [graphMode, setGraphMode] = useState<'lineage' | 'semantic'>('lineage');
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
 
@@ -41,7 +40,7 @@ export default function DashboardPage() {
             }
         }
         fetchData();
-    }, [graphMode]);
+    }, []);
 
     useEffect(() => {
         fetchFindings();
@@ -54,15 +53,8 @@ export default function DashboardPage() {
 
             const dataPromises: Promise<any>[] = [
                 classificationApi.getSummary(),
+                lineageApi.getLineage(undefined, undefined),
             ];
-
-            // Fetch appropriate graph based on mode
-            if (graphMode === 'semantic') {
-                dataPromises.push(lineageApi.getSemanticGraph({}));
-            } else {
-                // Fix: fetchLineage expects string arguments, not an object
-                dataPromises.push(lineageApi.getLineage(undefined, undefined));
-            }
 
             const [classification, graphData] = await Promise.all(dataPromises);
 
@@ -95,9 +87,7 @@ export default function DashboardPage() {
         }
     };
 
-    const handleGraphModeToggle = () => {
-        setGraphMode(prev => prev === 'lineage' ? 'semantic' : 'lineage');
-    };
+
 
     // Calculate metrics
     const totalFindings = findingsData?.total || 0;
@@ -200,57 +190,22 @@ export default function DashboardPage() {
                                 letterSpacing: '-0.02em',
                             }}
                         >
-                            Data Lineage Explorer
+                            Data Lineage
                         </h2>
 
-                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                            <span
-                                style={{
-                                    fontSize: '14px',
-                                    color: colors.text.secondary,
-                                    fontWeight: 600,
-                                    backgroundColor: colors.background.surface,
-                                    padding: '6px 12px',
-                                    borderRadius: '20px',
-                                    border: `1px solid ${colors.border.subtle}`,
-                                }}
-                            >
-                                {graphMode === 'lineage' ? '📊 PostgreSQL Lineage' : '🔗 Neo4j Semantic Graph'}
-                            </span>
-                            <button
-                                onClick={handleGraphModeToggle}
-                                disabled={loading}
-                                style={{
-                                    padding: '10px 24px',
-                                    backgroundColor: loading ? colors.background.elevated : (graphMode === 'semantic' ? colors.nodeColors.system : colors.text.secondary),
-                                    color: loading ? colors.text.muted : '#FFFFFF',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    cursor: loading ? 'not-allowed' : 'pointer',
-                                    fontSize: '14px',
-                                    fontWeight: 700,
-                                    transition: 'all 0.2s ease',
-                                    opacity: loading ? 0.7 : 1,
-                                    boxShadow: loading ? 'none' : '0 2px 4px rgba(0,0,0,0.1)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                }}
-                            >
-                                {loading && (
-                                    <span style={{
-                                        width: '12px',
-                                        height: '12px',
-                                        border: '2px solid #ffffff',
-                                        borderTopColor: 'transparent',
-                                        borderRadius: '50%',
-                                        display: 'inline-block',
-                                        animation: 'spin 1s linear infinite'
-                                    }} />
-                                )}
-                                {loading ? 'Fetching Data...' : `Switch to ${graphMode === 'lineage' ? 'Semantic' : 'Lineage'}`}
-                            </button>
-                        </div>
+                        <span
+                            style={{
+                                fontSize: '14px',
+                                color: colors.text.secondary,
+                                fontWeight: 600,
+                                backgroundColor: colors.background.surface,
+                                padding: '6px 12px',
+                                borderRadius: '20px',
+                                border: `1px solid ${colors.border.subtle}`,
+                            }}
+                        >
+                            🔗 Neo4j Semantic Graph
+                        </span>
                     </div>
 
                     {/* Lineage Canvas */}

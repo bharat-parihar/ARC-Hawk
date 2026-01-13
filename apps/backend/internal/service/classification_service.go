@@ -219,7 +219,7 @@ func (s *ClassificationService) extractClassificationFromPattern(patternName str
 	lower := strings.ToLower(patternName)
 
 	// Sensitive Personal Data
-	if containsStrict(lower, []string{"aadhaar", "pan", "pancard", "passport", "ssn", "social_security"}) {
+	if containsStrict(lower, []string{"aadhaar", "aadhar", "pan", "pancard", "passport", "ssn", "social_security"}) {
 		return "Sensitive Personal Data"
 	}
 	if containsStrict(lower, []string{"credit_card", "card", "debit_card"}) {
@@ -280,7 +280,7 @@ func (s *ClassificationService) classifyWithRules(input MultiSignalInput) Signal
 	} else if containsStrict(lowerPattern, []string{"pan", "pancard", "permanent_account_number"}) || containsStrict(lowerCol, []string{"pan", "pancard"}) {
 		score = 0.99
 		explanation = "PAN Card pattern detected"
-	} else if containsStrict(lowerPattern, []string{"aadhaar", "uidai", "adhaar"}) {
+	} else if containsStrict(lowerPattern, []string{"aadhaar", "uidai", "adhaar", "aadhar"}) {
 		score = 0.99
 		explanation = "Aadhaar pattern detected"
 	} else if containsStrict(lowerPattern, []string{"phone", "mobile", "cellphone"}) || containsStrict(lowerCol, []string{"phone", "mobile"}) {

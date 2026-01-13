@@ -1,7 +1,7 @@
-// Neo4j Lineage API - Phase 3 Unified Endpoint
-// Updated to use /api/v1/lineage with 4-level hierarchy
+// Neo4j Lineage API - Unified Neo4j-Only Endpoint
+// Uses /api/v1/lineage with 3-level hierarchy (System → Asset → PII_Category)
 
-// 4-Level Hierarchy Types
+// 3-Level Hierarchy Types (System → Asset → PII_Category)
 import {
     LineageNode,
     LineageEdge,
@@ -32,7 +32,11 @@ export interface LineageResponse {
 }
 
 // API Functions
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// Use relative URLs in browser to leverage Next.js rewrites
+// Use absolute URLs in server-side rendering
+const API_BASE = typeof window !== 'undefined'
+    ? '' // Browser: use relative URLs (proxied by Next.js)
+    : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'); // SSR: use absolute URLs
 
 export async function fetchLineage(
     systemFilter?: string,
@@ -68,12 +72,20 @@ export async function getLineage(assetId?: string, depth?: number): Promise<Line
 
         const result = await response.json();
 
-        // Backend returns: { data: { hierarchy: { nodes, edges }, aggregations }, status }
-        // Extract the nested hierarchy data
-        if (result.data && result.data.hierarchy) {
+        // Backend returns: { data: { nodes, edges }, status }
+        // Extract the nodes and edges directly from data
+        // Backend returns: { data: { hierarchy: { nodes, edges }, ... }, status }
+        // Extract from hierarchy object if present, otherwise try direct data
+        if (result.data) {
+            if (result.data.hierarchy) {
+                return {
+                    nodes: result.data.hierarchy.nodes || [],
+                    edges: result.data.hierarchy.edges || []
+                };
+            }
             return {
-                nodes: result.data.hierarchy.nodes || [],
-                edges: result.data.hierarchy.edges || []
+                nodes: result.data.nodes || [],
+                edges: result.data.edges || []
             };
         }
 
@@ -97,27 +109,10 @@ export async function fetchLineageStats(): Promise<LineageResponse['aggregations
     return data.stats;
 }
 
-// Legacy semantic graph endpoint (for backward compatibility)
-export async function getSemanticGraph(filters: { system?: string; risk?: string } = {}): Promise<any> {
-    const params = new URLSearchParams();
-    if (filters.system) params.append('system', filters.system);
-    if (filters.risk) params.append('risk', filters.risk);
-
-    const url = `${API_BASE}/api/v1/graph/semantic${params.toString() ? `?${params}` : ''}`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch semantic graph: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.data;
-}
 
 // Export as lineageApi for backward compatibility
 export const lineageApi = {
     fetchLineage,
     fetchLineageStats,
-    getSemanticGraph,
-    getLineage, // Use the actual getLineage function, not fetchLineage
+    getLineage,
 };

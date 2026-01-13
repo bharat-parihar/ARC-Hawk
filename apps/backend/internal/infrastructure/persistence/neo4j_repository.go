@@ -204,29 +204,6 @@ func (r *Neo4jRepository) CreateClassificationNode(ctx context.Context, classifi
 
 // === Relationship Creation Methods ===
 
-// CreateContainsRelationship creates a CONTAINS relationship (System -> Asset or Asset -> Finding)
-func (r *Neo4jRepository) CreateContainsRelationship(ctx context.Context, parentID, childID string) error {
-	session := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
-	defer session.Close(ctx)
-
-	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
-		query := `
-			MATCH (parent {id: $parentID})
-			MATCH (child {id: $childID})
-			MERGE (parent)-[r:CONTAINS]->(child)
-			RETURN r
-		`
-		params := map[string]interface{}{
-			"parentID": parentID,
-			"childID":  childID,
-		}
-		_, err := tx.Run(ctx, query, params)
-		return nil, err
-	})
-
-	return err
-}
-
 // CreateExposesRelationship creates an EXPOSES relationship (Asset -> Finding)
 func (r *Neo4jRepository) CreateExposesRelationship(ctx context.Context, assetID, findingID string) error {
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})

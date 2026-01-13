@@ -48,12 +48,6 @@ func (r *Neo4jRepository) CreatePIICategoryNode(ctx context.Context, piiType str
 // CreateHierarchyRelationship creates relationships using frozen semantic contract
 // Allowed edge types: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
 func (r *Neo4jRepository) CreateHierarchyRelationship(ctx context.Context, parentID, childID, relType string) error {
-	// Handle legacy edge types before entering session
-	if relType == "CONTAINS" {
-		// Redirect to SYSTEM_OWNS_ASSET for backward compatibility
-		return r.CreateHierarchyRelationship(ctx, parentID, childID, "SYSTEM_OWNS_ASSET")
-	}
-
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
 	defer session.Close(ctx)
 
@@ -92,7 +86,7 @@ func (r *Neo4jRepository) CreateHierarchyRelationship(ctx context.Context, paren
 	return err
 }
 
-// GetSemanticGraph retrieves the 4-level hierarchy from Neo4j
+// GetSemanticGraph retrieves the 3-level hierarchy from Neo4j
 func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, riskFilter string) ([]Node, []Edge, error) {
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
 	defer session.Close(ctx)
@@ -140,14 +134,19 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 			if sysVal != nil {
 				if node, ok := sysVal.(neo4j.Node); ok {
 					id, _ := node.Props["id"].(string)
-					name, _ := node.Props["name"].(string)
+					host, _ := node.Props["host"].(string)
+					// Use host as label for System nodes
+					label := host
+					if label == "" {
+						label = id // Fallback to ID if host is empty
+					}
 					if id != "" && !nodeMap[id] {
 						nodes = append(nodes, Node{
 							ID:    id,
-							Label: name,
+							Label: label,
 							Type:  "system",
 							Metadata: map[string]interface{}{
-								"host": node.Props["host"],
+								"host": host,
 							},
 						})
 						nodeMap[id] = true
@@ -160,13 +159,22 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 				if node, ok := assetVal.(neo4j.Node); ok {
 					id, _ := node.Props["id"].(string)
 					name, _ := node.Props["name"].(string)
+					path, _ := node.Props["path"].(string)
+					// Use name if available, otherwise path, otherwise ID
+					label := name
+					if label == "" {
+						label = path
+					}
+					if label == "" {
+						label = id
+					}
 					if id != "" && !nodeMap[id] {
 						nodes = append(nodes, Node{
 							ID:    id,
-							Label: name,
+							Label: label,
 							Type:  "asset",
 							Metadata: map[string]interface{}{
-								"path":        node.Props["path"],
+								"path":        path,
 								"environment": node.Props["environment"],
 							},
 						})

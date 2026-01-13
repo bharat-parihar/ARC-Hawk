@@ -638,7 +638,7 @@ func contains(str string, substrings []string) bool {
 func categorizePattern(patternName string) string {
 	lowerName := strings.ToLower(patternName)
 
-	if contains(lowerName, []string{"email", "phone", "ssn", "passport", "license"}) {
+	if contains(lowerName, []string{"email", "phone", "ssn", "passport", "license", "aadhaar", "aadhar", "pan"}) {
 		return "pii"
 	}
 	if contains(lowerName, []string{"key", "token", "secret", "password", "api", "aws"}) {

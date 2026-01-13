@@ -35,7 +35,7 @@ class AadhaarRecognizer(PatternRecognizer):
         Pattern(
             name="Aadhaar (12 digits)",
             regex=r"(?<!\d)[2-9]\d{3}[\s-]?\d{4}[\s-]?\d{4}(?!\d)",
-            score=0.3  # Low initial score - will boost after validation
+            score=0.9  # High score because we have strict Verhoeff validation
         ),
     ]
     

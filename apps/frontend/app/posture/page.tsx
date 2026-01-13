@@ -13,9 +13,9 @@ interface ScanRun {
     scan_started_at: string;
     scan_completed_at: string;
     status: string;
-    assets_scanned: number;
-    findings_count: number;
-    critical_findings: number;
+    total_assets: number;        // Backend returns total_assets
+    total_findings: number;       // Backend returns total_findings
+    critical_findings?: number;   // Optional, may not be in response
 }
 
 export default function PosturePage() {
@@ -54,7 +54,22 @@ export default function PosturePage() {
         setError(null);
 
         try {
-            // Simulate scan progress (replace with actual WebSocket implementation later)
+            // Call backend API to trigger scan
+            const response = await fetch('http://localhost:8080/api/v1/scans/trigger', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to trigger scan: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            console.log('Scan triggered:', result);
+
+            // Simulate progress while scan runs in background
             const progressInterval = setInterval(() => {
                 setScanProgress(prev => {
                     if (prev >= 90) {
@@ -63,18 +78,38 @@ export default function PosturePage() {
                     }
                     return prev + 10;
                 });
-            }, 500);
+            }, 1000);
 
-            // Call scan CLI via backend API (to be implemented)
-            // For now, show user how to run it manually
-            setTimeout(() => {
-                clearInterval(progressInterval);
-                setScanProgress(100);
-                setTimeout(() => {
-                    setScanning(false);
-                    fetchScans();
-                }, 1000);
-            }, 5000);
+            // Poll for completion (check every 3 seconds for 30 seconds max)
+            let attempts = 0;
+            const maxAttempts = 10;
+            const pollInterval = setInterval(async () => {
+                attempts++;
+                try {
+                    const latest = await scansApi.getLastScanRun();
+                    if (latest && latest.id !== latestScan?.id) {
+                        // New scan detected!
+                        clearInterval(progressInterval);
+                        clearInterval(pollInterval);
+                        setScanProgress(100);
+                        setTimeout(() => {
+                            setScanning(false);
+                            fetchScans();
+                        }, 1000);
+                    } else if (attempts >= maxAttempts) {
+                        // Timeout - stop polling
+                        clearInterval(progressInterval);
+                        clearInterval(pollInterval);
+                        setScanProgress(100);
+                        setTimeout(() => {
+                            setScanning(false);
+                            fetchScans();
+                        }, 1000);
+                    }
+                } catch (err) {
+                    console.error('Polling error:', err);
+                }
+            }, 3000);
 
         } catch (err: any) {
             console.error('Scan error:', err);
@@ -264,13 +299,13 @@ export default function PosturePage() {
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
                             <MetricCard
                                 label="Assets Scanned"
-                                value={latestScan.assets_scanned || 0}
+                                value={latestScan.total_assets || 0}
                                 color={colors.nodeColors.asset}
                                 icon="📦"
                             />
                             <MetricCard
                                 label="Total Findings"
-                                value={latestScan.findings_count || 0}
+                                value={latestScan.total_findings || 0}
                                 color={colors.status.info}
                                 icon="🔍"
                             />
@@ -333,10 +368,10 @@ export default function PosturePage() {
                                             <td style={cellStyle}>{formatDate(scan.scan_completed_at)}</td>
                                             <td style={cellStyle}>{getStatusBadge(scan.status)}</td>
                                             <td style={cellStyle}>
-                                                <span style={{ fontWeight: 600 }}>{scan.assets_scanned || 0}</span>
+                                                <span style={{ fontWeight: 600 }}>{scan.total_assets || 0}</span>
                                             </td>
                                             <td style={cellStyle}>
-                                                <span style={{ fontWeight: 600 }}>{scan.findings_count || 0}</span>
+                                                <span style={{ fontWeight: 600 }}>{scan.total_findings || 0}</span>
                                             </td>
                                             <td style={cellStyle}>
                                                 <span style={{ fontWeight: 700, color: colors.state.risk }}>

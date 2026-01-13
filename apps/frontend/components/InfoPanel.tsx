@@ -109,7 +109,7 @@ export default function InfoPanel({ nodeId, nodeData, onClose }: InfoPanelProps)
                         }}>
                             {nodeData?.type === 'system' ? '🏢' :
                                 nodeData?.type === 'asset' ? '📦' :
-                                    nodeData?.type === 'data_category' ? '📁' : '🔑'}
+                                    nodeData?.type === 'pii_category' ? '🔑' : '📁'}
                         </div>
                         <div>
                             <h2
