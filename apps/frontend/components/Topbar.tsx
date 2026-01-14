@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
-import { colors } from '@/design-system/colors';
-import { theme } from '@/design-system/themes';
+import React, { useState } from 'react';
+import { theme, getRiskColor } from '@/design-system/theme';
+import ScanAllButton from './ScanAllButton';
+import AddDataSourceModal from './AddDataSourceModal';
 
 interface TopbarProps {
     environment?: string;
@@ -12,177 +13,133 @@ interface TopbarProps {
 }
 
 export default function Topbar({
-    environment = 'Production',
+    environment = 'DPDPA Controls',
     scanTime,
     riskScore = 0,
     onSearch,
 }: TopbarProps) {
-    const getRiskLevel = (score: number) => {
-        if (score >= 80) return { label: 'Critical', color: colors.red[500], bg: colors.red[50] };
-        if (score >= 60) return { label: 'High', color: colors.amber[600], bg: colors.amber[50] };
-        if (score >= 40) return { label: 'Medium', color: colors.amber[500], bg: colors.amber[50] };
-        return { label: 'Low', color: colors.emerald[600], bg: colors.emerald[50] };
-    };
-
-    const risk = getRiskLevel(riskScore);
+    const [isAddSourceOpen, setIsAddSourceOpen] = useState(false);
+    const riskLevel = riskScore >= 80 ? 'Critical' : riskScore >= 50 ? 'High' : riskScore >= 20 ? 'Medium' : 'Low';
+    const riskColor = getRiskColor(riskLevel);
 
     return (
         <header
             style={{
                 height: '72px',
-                backgroundColor: colors.background.surface,
-                borderBottom: `1px solid ${colors.border.default}`,
+                backgroundColor: theme.colors.background.card,
+                borderBottom: `1px solid ${theme.colors.border.default}`,
                 position: 'sticky',
                 top: 0,
-                zIndex: theme.zIndex.sticky,
+                zIndex: 50,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '0 32px',
-                boxShadow: theme.shadows.sm,
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.4)',
             }}
         >
             {/* Left section - Title */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
                 <h1
                     style={{
-                        fontSize: theme.fontSize['2xl'],
-                        fontWeight: theme.fontWeight.extrabold,
-                        color: colors.text.primary,
+                        fontSize: '20px',
+                        fontWeight: 800,
+                        color: theme.colors.text.primary,
                         letterSpacing: '-0.02em',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
                     }}
                 >
-                    Data Lineage & Classification
+                    <span style={{ color: theme.colors.risk.critical }}>🛡️</span>
+                    DPDPA Compliance Control Plane
                 </h1>
             </div>
 
-            {/* Right section - Metadata */}
+            {/* Right section - Actions & Metadata */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                {/* Environment Badge */}
-                <div
+                <ScanAllButton />
+
+                <button
+                    onClick={() => setIsAddSourceOpen(true)}
                     style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
                         padding: '8px 16px',
-                        backgroundColor: environment === 'Production' ? colors.red[50] : colors.blue[50],
-                        borderRadius: theme.borderRadius.full,
-                        border: `1px solid ${environment === 'Production' ? colors.red[200] : colors.blue[200]}`,
+                        backgroundColor: theme.colors.background.tertiary,
+                        color: theme.colors.text.primary,
+                        border: `1px solid ${theme.colors.border.default}`,
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '6px'
                     }}
                 >
-                    <div
-                        style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: environment === 'Production' ? colors.red[500] : colors.blue[500],
-                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        }}
-                    />
-                    <span
-                        style={{
-                            fontSize: theme.fontSize.sm,
-                            fontWeight: theme.fontWeight.semibold,
-                            color: environment === 'Production' ? colors.red[700] : colors.blue[700],
-                        }}
-                    >
-                        {environment}
-                    </span>
-                </div>
+                    <span style={{ fontSize: '16px' }}>+</span> Add Source
+                </button>
+                <AddDataSourceModal isOpen={isAddSourceOpen} onClose={() => setIsAddSourceOpen(false)} />
 
-                {/* Scan Time */}
-                {scanTime && (
-                    <div
-                        style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'flex-end',
-                        }}
-                    >
-                        <div style={{
-                            fontSize: theme.fontSize.xs,
-                            color: colors.neutral[500],
-                            fontWeight: theme.fontWeight.medium,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em',
-                        }}>
-                            Last Scan
-                        </div>
-                        <div
-                            style={{
-                                fontSize: theme.fontSize.sm,
-                                color: colors.neutral[700],
-                                fontWeight: theme.fontWeight.semibold,
-                            }}
-                            suppressHydrationWarning
-                        >
-                            {new Date(scanTime).toLocaleString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                            })}
-                        </div>
-                    </div>
-                )}
+                <div
+                    style={{
+                        width: '1px',
+                        height: '32px',
+                        backgroundColor: theme.colors.border.default,
+                    }}
+                />
 
                 {/* Risk Score */}
-                {riskScore > 0 && (
+                {riskScore >= 0 && (
                     <div
                         style={{
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
-                            padding: '8px 20px',
-                            backgroundColor: risk.bg,
-                            borderRadius: theme.borderRadius.lg,
-                            border: `2px solid ${risk.color}`,
-                            minWidth: '100px',
+                            padding: '6px 16px',
+                            backgroundColor: `${riskColor}10`, // 10% opacity
+                            borderRadius: '8px',
+                            border: `1px solid ${riskColor}40`, // 40% opacity
+                            minWidth: '90px',
                         }}
                     >
                         <div style={{
-                            fontSize: theme.fontSize.xs,
-                            color: colors.neutral[600],
-                            fontWeight: theme.fontWeight.bold,
+                            fontSize: '11px',
+                            color: theme.colors.text.muted,
+                            fontWeight: 700,
                             textTransform: 'uppercase',
                             letterSpacing: '0.05em',
                             marginBottom: '2px',
                         }}>
-                            Risk
+                            Risk Score
                         </div>
                         <div
                             style={{
-                                fontSize: theme.fontSize.xl,
-                                color: risk.color,
-                                fontWeight: theme.fontWeight.extrabold,
+                                fontSize: '20px',
+                                color: riskColor,
+                                fontWeight: 800,
                                 lineHeight: 1,
                             }}
                         >
                             {riskScore}
                         </div>
-                        <div style={{
-                            fontSize: theme.fontSize.xs,
-                            color: risk.color,
-                            fontWeight: theme.fontWeight.semibold,
-                            marginTop: '2px',
-                        }}>
-                            {risk.label}
-                        </div>
                     </div>
                 )}
-            </div>
 
-            {/* CSS for pulse animation */}
-            <style jsx>{`
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.5;
-          }
-        }
-      `}</style>
+                {/* User Profile / Context */}
+                <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    backgroundColor: theme.colors.background.tertiary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: theme.colors.text.secondary,
+                    border: `1px solid ${theme.colors.border.default}`
+                }}>
+                    JS
+                </div>
+            </div>
         </header>
     );
 }

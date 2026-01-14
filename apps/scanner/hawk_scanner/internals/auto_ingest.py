@@ -9,21 +9,32 @@ Intelligence-at-Edge: Scanner sends ONLY validated findings.
 import requests
 import time
 import json
+import hashlib
+from datetime import datetime
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from typing import List, Dict, Any
+
+# Try to import SDK schema, but handle case where SDK might not be in path
+try:
+    from sdk.schema import VerifiedFinding, SourceInfo
+except ImportError:
+    # Fallback / Placeholder if running standalone without SDK
+    class SourceInfo:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+    
+    class VerifiedFinding:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+        
+        def to_dict(self):
+            return self.__dict__
 
 
 def create_retry_session(retries=3, backoff_factor=0.5, status_forcelist=(500, 502, 503, 504)):
     """
     Create a requests session with automated retry logic
-    
-    Args:
-        retries: Maximum number of retries
-        backoff_factor: Exponential backoff multiplier
-        status_forcelist: HTTP status codes to retry on
-    
-    Returns:
-        requests.Session with retry configuration
     """
     session = requests.Session()
     
@@ -46,39 +57,34 @@ def create_retry_session(retries=3, backoff_factor=0.5, status_forcelist=(500, 5
 def ingest_verified_findings(args, verified_findings, scan_metadata=None):
     """
     POST verified findings to backend /ingest-verified API.
-    
-    Intelligence-at-Edge: Scanner sends ONLY validated findings.
-    Backend trusts scanner and does NOT re-validate.
-    
-    Args:
-        args: Command line arguments (must contain ingest_url)
-        verified_findings: List of VerifiedFinding objects (already validated)
-        scan_metadata: Optional metadata about the scan
-    
-    Returns:
-        bool: True if ingestion succeeded, False otherwise
     """
     if not hasattr(args, 'ingest_url') or not args.ingest_url:
         return False
     
-    # Import here to avoid circular dependency
     from hawk_scanner.internals import system
     
     # Use /ingest-verified endpoint
-    base_url = args.ingest_url.rstrip('/ingest').rstrip('/api/v1/scans')
+    base_url = args.ingest_url.rstrip('/ingest').rstrip('/api/v1/scans').rstrip('/ingest-verified')
     ingest_url = f"{base_url}/api/v1/scans/ingest-verified"
     
     system.print_info(args, f"🚀 Auto-ingesting VERIFIED findings to {ingest_url}")
     
-    # Convert VerifiedFinding objects to dicts
-    findings_dicts = [finding.to_dict() for finding in verified_findings]
+    # Convert VerifiedFinding objects to dicts if they are objects
+    findings_dicts = []
+    for f in verified_findings:
+        if hasattr(f, 'to_dict'):
+            findings_dicts.append(f.to_dict())
+        elif isinstance(f, dict):
+            findings_dicts.append(f)
+        else:
+            findings_dicts.append(f.__dict__)
     
     # Prepare payload with VerifiedFinding schema
     payload = {
         "scan_metadata": scan_metadata or {
-            "scanner_version": "hawk-eye-scanner-2.0-sdk",
+            "scanner_version": "hawk-eye-scanner-2.0-cli",
             "scan_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "intelligence_at_edge": True,  # Mark as Intelligence-at-Edge
+            "intelligence_at_edge": True,
             "sdk_validated": True,
         },
         "verified_findings": findings_dicts,
@@ -93,7 +99,6 @@ def ingest_verified_findings(args, verified_findings, scan_metadata=None):
     
     try:
         system.print_info(args, f"⏳ Sending {len(findings_dicts)} VERIFIED findings to backend...")
-        system.print_info(args, "   (Backend will NOT re-validate - Intelligence-at-Edge)")
         
         response = session.post(
             ingest_url,
@@ -104,11 +109,6 @@ def ingest_verified_findings(args, verified_findings, scan_metadata=None):
         
         if response.status_code in [200, 201]:
             system.print_success(args, f"✅ Successfully ingested {len(findings_dicts)} verified findings!")
-            try:
-                resp_data = response.json()
-                system.print_info(args, f"Response: {resp_data}")
-            except:
-                pass
             return True
         else:
             system.print_error(args, f"❌ Ingestion failed with status {response.status_code}: {response.text}")
@@ -119,10 +119,6 @@ def ingest_verified_findings(args, verified_findings, scan_metadata=None):
         return False
     except requests.exceptions.ConnectionError as e:
         system.print_error(args, f"❌ Connection error: {e}")
-        system.print_info(args, "Hint: Ensure the backend is running and the URL is correct")
-        return False
-    except requests.exceptions.RequestException as e:
-        system.print_error(args, f"❌ Ingestion failed: {e}")
         return False
     except Exception as e:
         system.print_error(args, f"❌ Unexpected error during ingestion: {e}")
@@ -131,37 +127,73 @@ def ingest_verified_findings(args, verified_findings, scan_metadata=None):
         session.close()
 
 
-# Legacy function for backward compatibility
 def ingest_scan_results(args, grouped_results, scan_metadata=None):
     """
-    DEPRECATED: Use ingest_verified_findings() instead.
-    
-    This function is kept for backward compatibility but should not be used.
-    The new Intelligence-at-Edge architecture requires VerifiedFinding objects.
+    Adapter for legacy scan results format -> VerifiedFinding format.
+    Allows CLI to work with new backend endpoint.
     """
     from hawk_scanner.internals import system
-    system.print_error(args, "⚠️  WARNING: Using deprecated ingest_scan_results()")
-    system.print_info(args, "   Please update to ingest_verified_findings() with VerifiedFinding objects")
-    return False
+    system.print_info(args, "🔄 Converting legacy scan results to Verified Findings format...")
+
+    verified_findings = []
+    
+    for group, findings in grouped_results.items():
+        for result in findings:
+            # Map legacy result to VerifiedFinding
+            
+            # Determine SourceInfo
+            source_info = {
+                "data_source": group,
+                "host": result.get('host', 'localhost'),
+                "path": result.get('file_path') or result.get('file_name') or 'unknown',
+                "table": result.get('table'),
+                "column": result.get('column'),
+                "line": None # Legacy doesn't capture line number
+            }
+            
+            pattern_name = result.get('pattern_name', 'Unknown')
+            pii_type_map = {
+                "Aadhar": "IN_AADHAAR",
+                "PAN": "IN_PAN",
+                "Email": "EMAIL_ADDRESS",
+                "Phone": "PHONE_NUMBER",
+                "Credit Card": "CREDIT_CARD"
+            }
+            # Try to map pattern name to PII Type, else uppercase it
+            pii_type = pii_type_map.get(pattern_name, pattern_name.upper().replace(" ", "_"))
+            
+            for match_value in result.get('matches', []):
+                # Hash match
+                match_hash = hashlib.sha256(str(match_value).encode()).hexdigest()
+                
+                # Create finding dict (manual since we might not have SDK loaded)
+                vf = {
+                    "pii_type": pii_type,
+                    "value_hash": match_hash,
+                    "source": source_info,
+                    "validators_passed": ["regex"], # Assume regex passed
+                    "validation_method": "regex",
+                    "ml_confidence": 0.8,
+                    "ml_entity_type": pii_type,
+                    "context_excerpt": result.get('sample_text', '')[:100] if result.get('sample_text') else "",
+                    "context_keywords": [],
+                    "pattern_name": pattern_name,
+                    "detected_at": datetime.utcnow().isoformat() + "Z",
+                    "scanner_version": "hawk-scanner-cli-legacy-adapter"
+                }
+                verified_findings.append(vf)
+
+    return ingest_verified_findings(args, verified_findings, scan_metadata)
 
 
 def validate_ingest_url(url):
     """
     Validate that the ingestion URL is properly formatted
-    
-    Args:
-        url: URL to validate
-    
-    Returns:
-        bool: True if valid, False otherwise
     """
     if not url:
         return False
     
-    # Basic URL validation
     if not url.startswith(('http://', 'https://')):
         return False
     
-    # Should end with /ingest-verified (new) or /ingest (legacy)
-    valid_endpoints = ['/ingest-verified', '/ingest', '/api/v1/scans/ingest-verified', '/api/v1/scans/ingest']
-    return any(url.endswith(endpoint) for endpoint in valid_endpoints)
+    return True

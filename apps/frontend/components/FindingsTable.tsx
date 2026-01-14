@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import { FindingWithDetails, SignalScore } from '@/types';
 import { findingsApi } from '@/services/findings.api';
-import { colors } from '@/design-system/colors';
-
+import { theme, getRiskColor } from '@/design-system/theme';
 
 interface FindingsTableProps {
     findings: FindingWithDetails[];
@@ -45,16 +44,12 @@ export default function FindingsTable({
                 feedback_type: type,
                 original_classification: finding.classifications[0]?.classification_type,
             });
-
-            // Optimistic Update: Refresh page or ideally update local state
-            // For now, simpler to reload page to see effect
             window.location.reload();
         } catch (err) {
             console.error(err);
             alert('Failed to submit feedback');
         }
     };
-
 
     const toggleRowExpand = (findingId: string) => {
         setExpandedRows(prev => {
@@ -68,26 +63,20 @@ export default function FindingsTable({
         });
     };
 
-    const getSeverityBadgeClass = (sev: string) => {
-        switch (sev.toLowerCase()) {
-            case 'critical':
-                return 'badge-critical';
-            case 'high':
-                return 'badge-high';
-            case 'medium':
-                return 'badge-medium';
-            case 'low':
-                return 'badge-low';
-            default:
-                return '';
-        }
+    const getSeverityStyle = (sev: string) => {
+        const color = getRiskColor(sev);
+        return {
+            backgroundColor: `${color}15`,
+            color: color,
+            border: `1px solid ${color}40`,
+        };
     };
 
-    const getClassificationTag = (type: string) => {
-        if (type.includes('Sensitive')) return 'tag-sensitive';
-        if (type.includes('Secret')) return 'tag-secret';
-        if (type.includes('Personal')) return 'tag-pii';
-        return '';
+    const getClassificationStyle = (type: string) => {
+        if (type.includes('Sensitive')) return { bg: `${theme.colors.risk.critical}15`, text: theme.colors.risk.critical };
+        if (type.includes('Secret')) return { bg: `${theme.colors.risk.high}15`, text: theme.colors.risk.high };
+        if (type.includes('Personal')) return { bg: `${theme.colors.risk.medium}15`, text: theme.colors.risk.medium };
+        return { bg: theme.colors.background.tertiary, text: theme.colors.text.secondary };
     };
 
     const getConfidenceLevelBadge = (level?: string) => {
@@ -95,11 +84,11 @@ export default function FindingsTable({
 
         const getStyle = (l: string) => {
             switch (l) {
-                case 'Confirmed': return { bg: '#DCFCE7', text: '#166534', border: '#86EFAC' };
-                case 'High Confidence': return { bg: '#DBEAFE', text: '#1E40AF', border: '#93C5FD' };
-                case 'Needs Review': return { bg: '#FEF9C3', text: '#854D0E', border: '#FDE047' };
-                case 'Discard': return { bg: '#F3F4F6', text: '#4B5563', border: '#D1D5DB' };
-                default: return { bg: '#F3F4F6', text: '#4B5563', border: '#D1D5DB' };
+                case 'Confirmed': return { bg: `${theme.colors.status.success}15`, text: theme.colors.status.success, border: `${theme.colors.status.success}40` };
+                case 'High Confidence': return { bg: `${theme.colors.status.info}15`, text: theme.colors.status.info, border: `${theme.colors.status.info}40` };
+                case 'Needs Review': return { bg: `${theme.colors.status.warning}15`, text: theme.colors.status.warning, border: `${theme.colors.status.warning}40` };
+                case 'Discard': return { bg: theme.colors.background.tertiary, text: theme.colors.text.muted, border: theme.colors.border.default };
+                default: return { bg: theme.colors.background.tertiary, text: theme.colors.text.muted, border: theme.colors.border.default };
             }
         };
 
@@ -118,7 +107,6 @@ export default function FindingsTable({
 
     const renderSignalBadge = (signal?: SignalScore, label?: string) => {
         if (!signal) return null;
-
         const isContributionSignificant = signal.weighted_score > 0.1;
 
         return (
@@ -133,15 +121,15 @@ export default function FindingsTable({
                     width: 6,
                     height: 6,
                     borderRadius: '50%',
-                    backgroundColor: isContributionSignificant ? colors.status.info : colors.border.strong
+                    backgroundColor: isContributionSignificant ? theme.colors.status.info : theme.colors.border.active
                 }} />
-                <span style={{ fontSize: 13, fontWeight: 500, color: colors.text.secondary }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: theme.colors.text.secondary }}>
                     {label}:
                 </span>
-                <span style={{ fontSize: 13, fontFamily: 'monospace', color: colors.text.primary }}>
+                <span style={{ fontSize: 13, fontFamily: 'monospace', color: theme.colors.text.primary }}>
                     {(signal.confidence * 100).toFixed(0)}%
                 </span>
-                <span style={{ fontSize: 12, color: colors.text.muted }}>
+                <span style={{ fontSize: 12, color: theme.colors.text.muted }}>
                     ({(signal.weight * 100).toFixed(0)}% wgt)
                 </span>
             </div>
@@ -158,14 +146,12 @@ export default function FindingsTable({
         return (
             <div style={{
                 padding: '16px 24px',
-                backgroundColor: '#f8fafc',
-                borderTop: '1px solid #e2e8f0',
+                backgroundColor: theme.colors.background.secondary,
+                borderTop: `1px solid ${theme.colors.border.subtle}`,
             }}>
                 <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
-
-                    {/* Left: Signals List */}
                     <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#94a3b8', fontWeight: 600, marginBottom: 8, letterSpacing: '0.05em' }}>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: theme.colors.text.muted, fontWeight: 600, marginBottom: 8, letterSpacing: '0.05em' }}>
                             Signal Analysis
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '4px 24px' }}>
@@ -176,12 +162,11 @@ export default function FindingsTable({
                         </div>
                     </div>
 
-                    {/* Middle: Final Score */}
-                    <div style={{ paddingLeft: 32, borderLeft: '1px solid #e2e8f0' }}>
-                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#94a3b8', fontWeight: 600, marginBottom: 4 }}>
+                    <div style={{ paddingLeft: 32, borderLeft: `1px solid ${theme.colors.border.subtle}` }}>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: theme.colors.text.muted, fontWeight: 600, marginBottom: 4 }}>
                             Final Score
                         </div>
-                        <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>
+                        <div style={{ fontSize: 24, fontWeight: 700, color: theme.colors.text.primary, lineHeight: 1 }}>
                             {(finalScore * 100).toFixed(0)}%
                         </div>
                         <div style={{ marginTop: 4 }}>
@@ -189,9 +174,8 @@ export default function FindingsTable({
                         </div>
                     </div>
 
-                    {/* Right: Feedback */}
-                    <div style={{ paddingLeft: 32, borderLeft: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#94a3b8', fontWeight: 600 }}>
+                    <div style={{ paddingLeft: 32, borderLeft: `1px solid ${theme.colors.border.subtle}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: theme.colors.text.muted, fontWeight: 600 }}>
                             Validity
                         </div>
 
@@ -199,13 +183,13 @@ export default function FindingsTable({
                             <button
                                 onClick={(e) => { e.stopPropagation(); handleFeedback(finding, 'CONFIRMED'); }}
                                 style={{
-                                    border: '1px solid #d1d5db',
-                                    background: 'white',
+                                    border: `1px solid ${theme.colors.status.success}40`,
+                                    background: `${theme.colors.status.success}10`,
                                     borderRadius: 4,
                                     padding: '4px 8px',
                                     fontSize: 12,
                                     cursor: 'pointer',
-                                    color: '#15803d',
+                                    color: theme.colors.status.success,
                                     display: 'flex', alignItems: 'center', gap: 4
                                 }}
                             >
@@ -214,105 +198,106 @@ export default function FindingsTable({
                             <button
                                 onClick={(e) => { e.stopPropagation(); handleFeedback(finding, 'FALSE_POSITIVE'); }}
                                 style={{
-                                    border: '1px solid #d1d5db',
-                                    background: 'white',
+                                    border: `1px solid ${theme.colors.status.error}40`,
+                                    background: `${theme.colors.status.error}10`,
                                     borderRadius: 4,
                                     padding: '4px 8px',
                                     fontSize: 12,
                                     cursor: 'pointer',
-                                    color: '#b91c1c',
+                                    color: theme.colors.status.error,
                                     display: 'flex', alignItems: 'center', gap: 4
                                 }}
                             >
                                 <span>False Positive</span>
                             </button>
                         </div>
-
-                        {/* Status Feedback */}
-                        {finding.review_status === 'confirmed' && (
-                            <div style={{ fontSize: 11, color: '#15803d' }}>✓ User Verified</div>
-                        )}
-                        {finding.review_status === 'false_positive' && (
-                            <div style={{ fontSize: 11, color: '#b91c1c' }}>✕ User Rejected</div>
-                        )}
                     </div>
                 </div>
 
                 <div style={{ marginTop: 16 }}>
-                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#94a3b8', fontWeight: 600, marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: theme.colors.text.muted, fontWeight: 600, marginBottom: 8 }}>
                         Full Evidence ({finding.matches.length})
                     </div>
                     <div style={{
-                        background: '#f1f5f9',
+                        background: theme.colors.background.tertiary,
                         padding: '8px 12px',
                         borderRadius: 6,
                         fontFamily: 'monospace',
                         fontSize: 12,
-                        color: '#334155',
+                        color: theme.colors.text.secondary,
                         maxHeight: 100,
                         overflowY: 'auto',
-                        whiteSpace: 'pre-wrap'
+                        whiteSpace: 'pre-wrap',
+                        border: `1px solid ${theme.colors.border.default}`
                     }}>
                         {finding.matches.join('\n')}
                     </div>
-                </div>
-
-                <div style={{ marginTop: 16, fontSize: 13, color: '#64748b', fontStyle: 'italic', borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
-                    "{breakdown.presidio_signal?.explanation || breakdown.rule_signal?.explanation || 'No specific explanation available.'}"
                 </div>
             </div>
         );
     };
 
     return (
-        <div className="section">
-            <h2 className="section-title">Findings ({total})</h2>
+        <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: 700, color: theme.colors.text.primary, margin: 0 }}>
+                    Findings ({total})
+                </h2>
 
-            <div className="filters">
-                <div style={{ position: 'relative', display: 'inline-block' }}>
+                <div style={{ display: 'flex', gap: '12px' }}>
                     <input
                         type="text"
-                        placeholder="Search by pattern name... (Coming Soon)"
-                        className="filter-input"
+                        placeholder="Search..."
                         value={search}
                         onChange={(e) => handleSearchChange(e.target.value)}
-                        style={{ minWidth: 250, opacity: 0.6, cursor: 'not-allowed' }}
-                        disabled={true}
-                        title="Search functionality coming soon - backend implementation pending"
+                        style={{
+                            backgroundColor: theme.colors.background.tertiary,
+                            border: `1px solid ${theme.colors.border.default}`,
+                            color: theme.colors.text.primary,
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            minWidth: '250px'
+                        }}
                     />
+                    <select
+                        value={severity}
+                        onChange={(e) => handleSeverityChange(e.target.value)}
+                        style={{
+                            backgroundColor: theme.colors.background.tertiary,
+                            border: `1px solid ${theme.colors.border.default}`,
+                            color: theme.colors.text.primary,
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                        }}
+                    >
+                        <option value="">All Severities</option>
+                        <option value="Critical">Critical</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                    </select>
                 </div>
-
-                <select
-                    className="filter-select"
-                    value={severity}
-                    onChange={(e) => handleSeverityChange(e.target.value)}
-                >
-                    <option value="">All Severities</option>
-                    <option value="Critical">Critical</option>
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
-                </select>
             </div>
 
-            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <table className="table" style={{ minWidth: '1200px' }}>
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                     <thead>
-                        <tr>
-                            <th style={{ width: 40, minWidth: 40 }}></th>
-                            <th style={{ minWidth: 200, width: '15%' }}>Asset</th>
-                            <th style={{ minWidth: 150, width: '12%' }}>Environment / System</th>
-                            <th style={{ minWidth: 120, width: '10%' }}>Pattern</th>
-                            <th style={{ minWidth: 150, width: '15%' }}>Evidence</th>
-                            <th style={{ minWidth: 100, width: '8%' }}>Severity</th>
-                            <th style={{ minWidth: 140, width: '12%' }}>Classification</th>
-                            <th style={{ minWidth: 180, width: '15%' }}>Confidence</th>
+                        <tr style={{ borderBottom: `1px solid ${theme.colors.border.default}` }}>
+                            <th style={{ width: 40, padding: '12px', color: theme.colors.text.muted }}></th>
+                            <th style={{ padding: '12px', textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>Asset</th>
+                            <th style={{ padding: '12px', textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>Environment</th>
+                            <th style={{ padding: '12px', textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>Pattern</th>
+                            <th style={{ padding: '12px', textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>Evidence</th>
+                            <th style={{ padding: '12px', textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>Severity</th>
+                            <th style={{ padding: '12px', textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>Classification</th>
                         </tr>
                     </thead>
                     <tbody>
                         {findings.length === 0 ? (
                             <tr>
-                                <td colSpan={8} style={{ textAlign: 'center', padding: 48, color: 'var(--color-text-muted)' }}>
+                                <td colSpan={7} style={{ textAlign: 'center', padding: '48px', color: theme.colors.text.muted }}>
                                     No findings match the current filters
                                 </td>
                             </tr>
@@ -320,6 +305,7 @@ export default function FindingsTable({
                             findings.map((finding) => {
                                 const isExpanded = expandedRows.has(finding.id);
                                 const classification = finding.classifications[0];
+                                const severityStyle = getSeverityStyle(finding.severity);
 
                                 return (
                                     <React.Fragment key={finding.id}>
@@ -327,56 +313,62 @@ export default function FindingsTable({
                                             onClick={() => toggleRowExpand(finding.id)}
                                             style={{
                                                 cursor: 'pointer',
-                                                backgroundColor: isExpanded ? '#f8fafc' : 'transparent',
-                                                borderBottom: '1px solid #e2e8f0',
+                                                backgroundColor: isExpanded ? theme.colors.background.secondary : 'transparent',
+                                                borderBottom: `1px solid ${theme.colors.border.subtle}`,
+                                                transition: 'background-color 0.2s'
                                             }}
-                                            className="hover:bg-slate-50 transition-colors"
+                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isExpanded ? theme.colors.background.secondary : theme.colors.background.tertiary}
+                                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isExpanded ? theme.colors.background.secondary : 'transparent'}
                                         >
-                                            <td style={{ padding: '16px 8px', textAlign: 'center', color: '#94a3b8' }}>
+                                            <td style={{ padding: '16px 8px', textAlign: 'center', color: theme.colors.text.muted }}>
                                                 {isExpanded ? '▼' : '▶'}
                                             </td>
                                             <td style={{ padding: 16 }}>
-                                                <div style={{ fontWeight: 600, color: '#0f172a' }}>{finding.asset_name}</div>
-                                                <div style={{ fontSize: 13, color: '#64748b' }}>{finding.asset_path}</div>
+                                                <div style={{ fontWeight: 600, color: theme.colors.text.primary }}>{finding.asset_name}</div>
+                                                <div style={{ fontSize: 13, color: theme.colors.text.secondary }}>{finding.asset_path}</div>
                                             </td>
                                             <td style={{ padding: 16 }}>
-                                                <div style={{ fontSize: 13 }}>{finding.environment}</div>
-                                                <div style={{ fontSize: 12, color: '#64748b' }}>{finding.source_system}</div>
+                                                <div style={{ fontSize: 13, color: theme.colors.text.primary }}>{finding.environment}</div>
+                                                <div style={{ fontSize: 12, color: theme.colors.text.muted }}>{finding.source_system}</div>
                                             </td>
-                                            <td style={{ padding: 16, fontFamily: 'monospace', fontSize: 13 }}>{finding.pattern_name}</td>
+                                            <td style={{ padding: 16, fontFamily: 'monospace', fontSize: 13, color: theme.colors.text.secondary }}>{finding.pattern_name}</td>
                                             <td style={{ padding: 16 }}>
-                                                <div style={{ fontSize: 12, fontFamily: 'monospace', color: '#64748b', maxHeight: '100px', overflowY: 'auto' }}>
-                                                    {finding.matches.map((match, idx) => (
-                                                        <div key={idx} style={{ marginBottom: 2 }}>{match}</div>
-                                                    ))}
+                                                <div style={{ fontSize: 12, fontFamily: 'monospace', color: theme.colors.text.muted, maxHeight: '60px', overflowY: 'hidden' }}>
+                                                    {finding.matches[0]} {finding.matches.length > 1 && `+${finding.matches.length - 1} more`}
                                                 </div>
                                             </td>
                                             <td style={{ padding: 16 }}>
-                                                <span className={`badge ${getSeverityBadgeClass(finding.severity)}`} style={{ borderRadius: 4, fontWeight: 600 }}>
+                                                <span style={{
+                                                    padding: '4px 8px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '12px',
+                                                    fontWeight: 600,
+                                                    ...severityStyle
+                                                }}>
                                                     {finding.severity}
                                                 </span>
                                             </td>
                                             <td style={{ padding: 16 }}>
-                                                {finding.classifications.map((c, i) => (
-                                                    <span key={i} className={`tag ${getClassificationTag(c.classification_type)}`} style={{ borderRadius: 4 }}>
-                                                        {c.classification_type}
-                                                    </span>
-                                                ))}
-                                            </td>
-                                            <td style={{ padding: 16 }}>
-                                                {classification && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                        <span style={{ fontWeight: 600, fontSize: 13 }}>
-                                                            {(classification.confidence_score * 100).toFixed(0)}%
+                                                {finding.classifications.map((c, i) => {
+                                                    const style = getClassificationStyle(c.classification_type);
+                                                    return (
+                                                        <span key={i} style={{
+                                                            padding: '4px 8px',
+                                                            borderRadius: '4px',
+                                                            fontSize: '12px',
+                                                            backgroundColor: style.bg,
+                                                            color: style.text,
+                                                            marginRight: '4px'
+                                                        }}>
+                                                            {c.classification_type}
                                                         </span>
-                                                        {getConfidenceLevelBadge(classification.confidence_level)}
-                                                    </div>
-                                                )}
+                                                    );
+                                                })}
                                             </td>
                                         </tr>
                                         {isExpanded && (
                                             <tr>
-                                                <td colSpan={8} style={{ padding: 0 }}>
+                                                <td colSpan={7} style={{ padding: 0 }}>
                                                     {renderSignalBreakdown(finding)}
                                                 </td>
                                             </tr>
@@ -390,23 +382,33 @@ export default function FindingsTable({
             </div>
 
             {totalPages > 1 && (
-                <div className="pagination" style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <div style={{ borderTop: `1px solid ${theme.colors.border.default}`, paddingTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     <button
-                        className="pagination-button"
                         onClick={() => onPageChange(page - 1)}
                         disabled={page <= 1}
-                        style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '6px 12px' }}
+                        style={{
+                            border: `1px solid ${theme.colors.border.default}`,
+                            borderRadius: 4,
+                            padding: '6px 12px',
+                            background: page <= 1 ? theme.colors.background.secondary : theme.colors.background.card,
+                            color: page <= 1 ? theme.colors.text.muted : theme.colors.text.primary
+                        }}
                     >
                         Previous
                     </button>
-                    <span style={{ fontSize: 14, color: '#64748b', alignSelf: 'center' }}>
+                    <span style={{ fontSize: 14, color: theme.colors.text.secondary, alignSelf: 'center' }}>
                         Page {page} of {totalPages}
                     </span>
                     <button
-                        className="pagination-button"
                         onClick={() => onPageChange(page + 1)}
                         disabled={page >= totalPages}
-                        style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '6px 12px' }}
+                        style={{
+                            border: `1px solid ${theme.colors.border.default}`,
+                            borderRadius: 4,
+                            padding: '6px 12px',
+                            background: page >= totalPages ? theme.colors.background.secondary : theme.colors.background.card,
+                            color: page >= totalPages ? theme.colors.text.muted : theme.colors.text.primary
+                        }}
                     >
                         Next
                     </button>

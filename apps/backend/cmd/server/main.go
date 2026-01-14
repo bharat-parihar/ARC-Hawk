@@ -128,6 +128,12 @@ func main() {
 	assetService := service.NewAssetService(repo)
 	datasetService := service.NewDatasetService(repo)
 
+	// NEW: Product & UX services
+	scanOrchestrationService := service.NewScanOrchestrationService(repo)
+	complianceService := service.NewComplianceService(repo, neo4jRepo)
+	analyticsService := service.NewAnalyticsService(repo)
+	connectionService := service.NewConnectionService()
+
 	// Phase 2: SDK-verified ingestion handler
 	sdkIngestHandler := api.NewSDKIngestHandler(ingestionService)
 
@@ -144,6 +150,10 @@ func main() {
 		assetService,
 		semanticLineageService,
 		datasetService,
+		scanOrchestrationService,
+		complianceService,
+		analyticsService,
+		connectionService,
 	)
 
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")

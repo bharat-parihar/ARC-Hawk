@@ -5,7 +5,7 @@ import Topbar from '@/components/Topbar';
 import FindingsTable from '@/components/FindingsTable';
 import LoadingState from '@/components/LoadingState';
 import { findingsApi } from '@/services/findings.api';
-import { colors } from '@/design-system/colors';
+import { theme } from '@/design-system/theme';
 import type { FindingWithDetails, FindingsResponse } from '@/types';
 
 export default function FindingsPage() {
@@ -83,7 +83,7 @@ export default function FindingsPage() {
     };
 
     return (
-        <div style={{ minHeight: '100vh', backgroundColor: colors.background.primary }}>
+        <div style={{ minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
             <Topbar
                 scanTime={new Date().toISOString()} // Ideally fetch this
                 environment="Production"
@@ -96,12 +96,12 @@ export default function FindingsPage() {
                         <h1 style={{
                             fontSize: '28px',
                             fontWeight: 800,
-                            color: colors.text.primary,
+                            color: theme.colors.text.primary,
                             margin: 0
                         }}>
                             Findings Explorer
                         </h1>
-                        <p style={{ color: colors.text.secondary, marginTop: '8px' }}>
+                        <p style={{ color: theme.colors.text.secondary, marginTop: '8px' }}>
                             Detailed list of all security findings and PII detections.
                         </p>
                     </div>
@@ -116,9 +116,9 @@ export default function FindingsPage() {
                             style={{
                                 padding: '10px 20px',
                                 borderRadius: '8px',
-                                border: `1px solid ${colors.border.default}`,
-                                backgroundColor: colors.background.surface,
-                                color: colors.text.primary,
+                                border: `1px solid ${theme.colors.border.default}`,
+                                backgroundColor: theme.colors.background.card,
+                                color: theme.colors.text.primary,
                                 fontWeight: 600,
                                 fontSize: '14px',
                                 cursor: 'pointer',
@@ -127,10 +127,10 @@ export default function FindingsPage() {
                                 gap: '8px',
                             }}
                             onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = colors.background.elevated;
+                                e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
                             }}
                             onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = colors.background.surface;
+                                e.currentTarget.style.backgroundColor = theme.colors.background.card;
                             }}
                         >
                             📊 Export CSV
@@ -139,7 +139,14 @@ export default function FindingsPage() {
                 </div>
 
                 {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-lg mb-6">
+                    <div style={{
+                        backgroundColor: `${theme.colors.status.error}10`,
+                        border: `1px solid ${theme.colors.status.error}40`,
+                        color: theme.colors.status.error,
+                        padding: '16px',
+                        borderRadius: '8px',
+                        marginBottom: '24px'
+                    }}>
                         {error}
                     </div>
                 )}
@@ -147,7 +154,13 @@ export default function FindingsPage() {
                 {loading && !findingsData ? (
                     <LoadingState message="Loading findings..." />
                 ) : (
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div style={{
+                        backgroundColor: theme.colors.background.card,
+                        borderRadius: '12px',
+                        border: `1px solid ${theme.colors.border.default}`,
+                        padding: '24px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.4)'
+                    }}>
                         {findingsData ? (
                             <FindingsTable
                                 findings={findingsData.findings}

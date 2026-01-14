@@ -5,7 +5,7 @@ import Topbar from '@/components/Topbar';
 import AssetTable from '@/components/AssetTable';
 import LoadingState from '@/components/LoadingState';
 import { assetsApi } from '@/services/assets.api';
-import { colors } from '@/design-system/colors';
+import { theme } from '@/design-system/theme';
 import { Asset } from '@/types';
 import { useRouter } from 'next/navigation';
 
@@ -37,7 +37,7 @@ export default function AssetInventoryPage() {
     };
 
     return (
-        <div style={{ minHeight: '100vh', backgroundColor: colors.background.primary }}>
+        <div style={{ minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
             <Topbar
                 scanTime={new Date().toISOString()} // Todo: fetch real scan time
                 environment="Production"
@@ -48,17 +48,24 @@ export default function AssetInventoryPage() {
                     <h1 style={{
                         fontSize: '32px',
                         fontWeight: 800,
-                        color: colors.text.primary,
+                        color: theme.colors.text.primary,
                         marginBottom: '8px',
                         letterSpacing: '-0.02em',
                     }}>
                         Asset Inventory
                     </h1>
-                    <div className="flex items-center gap-2">
-                        <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            backgroundColor: theme.colors.background.tertiary,
+                            color: theme.colors.text.secondary,
+                            fontSize: '12px',
+                            fontWeight: 700
+                        }}>
                             Total: {total}
                         </span>
-                        <span className="text-slate-500 text-sm">
+                        <span style={{ color: theme.colors.text.muted, fontSize: '14px' }}>
                             Canonical source of truth for all tracked data assets.
                         </span>
                     </div>

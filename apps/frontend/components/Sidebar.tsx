@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { colors } from '@/design-system/colors';
-import { theme } from '@/design-system/themes';
+import { theme } from '@/design-system/theme';
 
 interface SidebarProps {
     children?: React.ReactNode;
@@ -16,13 +15,13 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
             style={{
                 width: collapsed ? '64px' : '280px',
                 height: '100vh',
-                backgroundColor: colors.background.surface,
-                borderRight: `1px solid ${colors.border.default}`,
+                backgroundColor: theme.colors.background.secondary,
+                borderRight: `1px solid ${theme.colors.border.default}`,
                 transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 position: 'fixed',
                 left: 0,
                 top: 0,
-                zIndex: theme.zIndex.sticky,
+                zIndex: 100,
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
@@ -32,11 +31,12 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
             <div
                 style={{
                     padding: collapsed ? '20px 12px' : '20px 24px',
-                    borderBottom: `1px solid ${colors.border.default}`,
+                    borderBottom: `1px solid ${theme.colors.border.default}`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     minHeight: '72px',
+                    backgroundColor: theme.colors.background.primary
                 }}
             >
                 {!collapsed && (
@@ -49,8 +49,8 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
                             style={{
                                 width: '32px',
                                 height: '32px',
-                                background: colors.nodeColors.system,
-                                borderRadius: theme.borderRadius.md,
+                                background: theme.colors.primary.DEFAULT,
+                                borderRadius: '8px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -61,9 +61,9 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
                         </div>
                         <span
                             style={{
-                                fontSize: theme.fontSize.lg,
-                                fontWeight: theme.fontWeight.bold,
-                                color: colors.text.primary,
+                                fontSize: '18px',
+                                fontWeight: 800,
+                                color: theme.colors.text.primary,
                                 letterSpacing: '-0.02em',
                             }}
                         >
@@ -76,26 +76,24 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
                     onClick={onToggle}
                     style={{
                         background: 'transparent',
-                        border: `1px solid ${colors.neutral[700]}`,
-                        borderRadius: theme.borderRadius.sm,
+                        border: `1px solid ${theme.colors.border.active}`,
+                        borderRadius: '6px',
                         width: '32px',
                         height: '32px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         cursor: 'pointer',
-                        color: colors.neutral[400],
+                        color: theme.colors.text.tertiary,
                         transition: 'all 0.2s ease',
                     }}
                     onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = colors.neutral[800];
-                        e.currentTarget.style.borderColor = colors.neutral[600];
-                        e.currentTarget.style.color = colors.neutral[200];
+                        e.currentTarget.style.borderColor = theme.colors.text.secondary;
+                        e.currentTarget.style.color = theme.colors.text.secondary;
                     }}
                     onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.borderColor = colors.neutral[700];
-                        e.currentTarget.style.color = colors.neutral[400];
+                        e.currentTarget.style.borderColor = theme.colors.border.active;
+                        e.currentTarget.style.color = theme.colors.text.tertiary;
                     }}
                 >
                     {collapsed ? '→' : '←'}
@@ -105,20 +103,31 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
             <nav
                 style={{
                     flex: 1,
-                    padding: collapsed ? '16px 8px' : '16px',
+                    padding: collapsed ? '16px 8px' : '24px 16px',
                     overflowY: 'auto',
                 }}
             >
-                <div style={{ marginBottom: '24px' }}>
-                    <SectionHeader collapsed={collapsed}>Platform</SectionHeader>
+                <div style={{ marginBottom: '32px' }}>
+                    <SectionHeader collapsed={collapsed}>Compliance Controls</SectionHeader>
                     <NavSection
-                        icon="📊"
-                        label="Risk Overview"
-                        href="/"
+                        icon="🛡️"
+                        label="Compliance Posture"
+                        href="/compliance"
                         collapsed={collapsed}
+                        active={true}
                     />
                     <NavSection
-                        icon="📦"
+                        icon="🔥"
+                        label="Risk Analytics"
+                        href="/analytics"
+                        collapsed={collapsed}
+                    />
+                </div>
+
+                <div style={{ marginBottom: '32px' }}>
+                    <SectionHeader collapsed={collapsed}>Data Assets</SectionHeader>
+                    <NavSection
+                        icon="🗂️"
                         label="Asset Inventory"
                         href="/assets"
                         collapsed={collapsed}
@@ -135,22 +144,16 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
                         href="/findings"
                         collapsed={collapsed}
                     />
-                    <NavSection
-                        icon="🛡️"
-                        label="Posture"
-                        href="/posture"
-                        collapsed={collapsed}
-                    />
                 </div>
 
                 <div style={{
                     height: '1px',
-                    background: colors.border.subtle,
+                    background: theme.colors.border.default,
                     margin: collapsed ? '12px 4px' : '16px 0',
                 }} />
 
                 <div style={{ marginBottom: '24px' }}>
-                    <SectionHeader collapsed={collapsed}>Configuration</SectionHeader>
+                    <SectionHeader collapsed={collapsed}>System</SectionHeader>
                     <NavSection
                         icon="⚙️"
                         label="Settings"
@@ -158,24 +161,46 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
                         collapsed={collapsed}
                     />
                 </div>
-
-                {/* Legacy Links during transition - Optional */}
             </nav>
 
             {/* Footer */}
             <div
                 style={{
                     padding: collapsed ? '12px 8px' : '16px',
-                    borderTop: `1px solid ${colors.neutral[800]}`,
+                    borderTop: `1px solid ${theme.colors.border.default}`,
+                    backgroundColor: theme.colors.background.primary
                 }}
             >
+                <a
+                    href="https://digitalindia.gov.in/dpdpa"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: collapsed ? 'center' : 'center',
+                        gap: '8px',
+                        padding: '10px',
+                        marginBottom: '12px',
+                        borderRadius: '8px',
+                        textDecoration: 'none',
+                        color: theme.colors.primary.DEFAULT,
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        backgroundColor: `${theme.colors.primary.DEFAULT}15`,
+                        transition: 'background 0.2s',
+                    }}
+                >
+                    <span style={{ fontSize: '16px' }}>📚</span>
+                    {!collapsed && <span>DPDPA Guide</span>}
+                </a>
                 {!collapsed && (
                     <div style={{
-                        fontSize: theme.fontSize.xs,
-                        color: colors.neutral[500],
+                        fontSize: '12px',
+                        color: theme.colors.text.muted,
                         textAlign: 'center',
                     }}>
-                        Version 1.0.0
+                        v1.2.0 • DPDPA Edition
                     </div>
                 )}
             </div>
@@ -190,13 +215,14 @@ function SectionHeader({ children, collapsed }: { children: React.ReactNode; col
     return (
         <div
             style={{
-                fontSize: theme.fontSize.xs,
-                fontWeight: theme.fontWeight.bold,
-                color: colors.neutral[500],
+                fontSize: '11px',
+                fontWeight: 700,
+                color: theme.colors.text.muted,
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
-                marginBottom: '8px',
+                marginBottom: '12px',
                 marginTop: '4px',
+                paddingLeft: '12px'
             }}
         >
             {children}
@@ -204,11 +230,12 @@ function SectionHeader({ children, collapsed }: { children: React.ReactNode; col
     );
 }
 
-function NavSection({ icon, label, href, collapsed }: {
+function NavSection({ icon, label, href, collapsed, active }: {
     icon: string;
     label: string;
     href: string;
     collapsed: boolean;
+    active?: boolean;
 }) {
     const [isHovered, setIsHovered] = useState(false);
 
@@ -220,15 +247,16 @@ function NavSection({ icon, label, href, collapsed }: {
                 alignItems: 'center',
                 gap: '12px',
                 padding: collapsed ? '12px 8px' : '12px 16px',
-                borderRadius: theme.borderRadius.md,
-                color: colors.text.primary, // Make text black (primary)
+                borderRadius: '8px',
+                color: active ? theme.colors.text.primary : theme.colors.text.secondary,
                 textDecoration: 'none',
-                fontSize: theme.fontSize.base,
-                fontWeight: theme.fontWeight.bold, // Make text bold
+                fontSize: '14px',
+                fontWeight: active ? 700 : 500,
                 marginBottom: '4px',
                 transition: 'all 0.2s ease',
-                backgroundColor: isHovered ? colors.background.elevated : 'transparent',
+                backgroundColor: active || isHovered ? theme.colors.background.tertiary : 'transparent',
                 justifyContent: collapsed ? 'center' : 'flex-start',
+                borderLeft: active ? `3px solid ${theme.colors.primary.DEFAULT}` : '3px solid transparent'
             }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
@@ -236,69 +264,5 @@ function NavSection({ icon, label, href, collapsed }: {
             <span style={{ fontSize: '18px' }}>{icon}</span>
             {!collapsed && <span>{label}</span>}
         </a>
-    );
-}
-
-function NavItem({ icon, label, count, collapsed, risk }: {
-    icon: string;
-    label: string;
-    count?: number;
-    collapsed: boolean;
-    risk?: 'low' | 'medium' | 'high' | 'critical';
-}) {
-    const [isHovered, setIsHovered] = useState(false);
-
-    const getRiskColor = () => {
-        if (!risk) return colors.neutral[600];
-        switch (risk) {
-            case 'critical': return colors.red[500];
-            case 'high': return colors.amber[500];
-            case 'medium': return colors.amber[600];
-            case 'low': return colors.emerald[500];
-            default: return colors.neutral[600];
-        }
-    };
-
-    return (
-        <div
-            style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: collapsed ? '10px 8px' : '10px 12px',
-                borderRadius: theme.borderRadius.sm,
-                color: colors.text.primary, // Make text black (primary)
-                fontSize: theme.fontSize.sm,
-                fontWeight: theme.fontWeight.bold, // Make text bold
-                marginBottom: '2px',
-                transition: 'all 0.2s ease',
-                backgroundColor: isHovered ? colors.background.elevated : 'transparent',
-                cursor: 'pointer',
-                justifyContent: collapsed ? 'center' : 'space-between',
-            }}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-        >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '14px' }}>{icon}</span>
-                {!collapsed && <span>{label}</span>}
-            </div>
-            {!collapsed && count !== undefined && (
-                <span
-                    style={{
-                        fontSize: theme.fontSize.xs,
-                        fontWeight: theme.fontWeight.bold,
-                        color: risk ? '#ffffff' : colors.neutral[500],
-                        backgroundColor: getRiskColor(),
-                        padding: '2px 8px',
-                        borderRadius: theme.borderRadius.full,
-                        minWidth: '24px',
-                        textAlign: 'center',
-                    }}
-                >
-                    {count}
-                </span>
-            )}
-        </div>
     );
 }

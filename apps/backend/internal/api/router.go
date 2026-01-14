@@ -10,13 +10,17 @@ import (
 
 // Router holds all handlers
 type Router struct {
-	ingestionHandler      *IngestionHandler
-	classificationHandler *ClassificationHandler
-	findingsHandler       *FindingsHandler
-	assetHandler          *AssetHandler
-	graphHandler          *GraphHandler
-	datasetHandler        *DatasetHandler
-	scanTriggerHandler    *ScanTriggerHandler
+	ingestionHandler         *IngestionHandler
+	classificationHandler    *ClassificationHandler
+	findingsHandler          *FindingsHandler
+	assetHandler             *AssetHandler
+	graphHandler             *GraphHandler
+	datasetHandler           *DatasetHandler
+	scanTriggerHandler       *ScanTriggerHandler
+	scanOrchestrationHandler *ScanOrchestrationHandler
+	complianceHandler        *ComplianceHandler
+	analyticsHandler         *AnalyticsHandler
+	connectionHandler        *ConnectionHandler
 }
 
 // NewRouter creates a new router with all handlers
@@ -28,15 +32,23 @@ func NewRouter(
 	assetService *service.AssetService,
 	semanticLineageService *service.SemanticLineageService,
 	datasetService *service.DatasetService,
+	scanOrchestrationService *service.ScanOrchestrationService,
+	complianceService *service.ComplianceService,
+	analyticsService *service.AnalyticsService,
+	connectionService *service.ConnectionService,
 ) *Router {
 	return &Router{
-		ingestionHandler:      NewIngestionHandler(ingestionService),
-		classificationHandler: NewClassificationHandler(classificationService, classificationSummaryService),
-		findingsHandler:       NewFindingsHandler(findingsService),
-		assetHandler:          NewAssetHandler(assetService),
-		graphHandler:          NewGraphHandler(semanticLineageService),
-		datasetHandler:        NewDatasetHandler(datasetService),
-		scanTriggerHandler:    NewScanTriggerHandler(),
+		ingestionHandler:         NewIngestionHandler(ingestionService),
+		classificationHandler:    NewClassificationHandler(classificationService, classificationSummaryService),
+		findingsHandler:          NewFindingsHandler(findingsService),
+		assetHandler:             NewAssetHandler(assetService),
+		graphHandler:             NewGraphHandler(semanticLineageService),
+		datasetHandler:           NewDatasetHandler(datasetService),
+		scanTriggerHandler:       NewScanTriggerHandler(),
+		scanOrchestrationHandler: NewScanOrchestrationHandler(scanOrchestrationService),
+		complianceHandler:        NewComplianceHandler(complianceService),
+		analyticsHandler:         NewAnalyticsHandler(analyticsService),
+		connectionHandler:        NewConnectionHandler(connectionService),
 	}
 }
 
@@ -80,6 +92,11 @@ func (r *Router) SetupRoutes(
 			// Scan trigger
 			scans.POST("/trigger", r.scanTriggerHandler.TriggerScan)
 
+			// NEW: Scan Orchestration (Product Upgrade)
+			scans.POST("/scan-all", r.scanOrchestrationHandler.ScanAllAssets)
+			scans.GET("/status", r.scanOrchestrationHandler.GetScanStatus)
+			scans.GET("/jobs", r.scanOrchestrationHandler.GetAllJobs)
+
 			// Scan management
 			scans.GET("/latest", r.ingestionHandler.GetLatestScan)
 			scans.GET("/:id", r.ingestionHandler.GetScanStatus)
@@ -103,7 +120,25 @@ func (r *Router) SetupRoutes(
 			classification.GET("/summary", r.classificationHandler.GetClassificationSummary)
 		}
 
-		// Findings
+		// NEW: Compliance Posture
+		compliance := v1.Group("/compliance")
+		{
+			compliance.GET("/overview", r.complianceHandler.GetComplianceOverview)
+			compliance.GET("/violations", r.complianceHandler.GetConsentViolations)
+			compliance.GET("/critical", r.complianceHandler.GetCriticalAssets)
+		}
+
+		// NEW: Analytics & Heatmap
+		analytics := v1.Group("/analytics")
+		{
+			analytics.GET("/heatmap", r.analyticsHandler.GetPIIHeatmap)
+			analytics.GET("/trends", r.analyticsHandler.GetRiskTrend)
+		}
+
+		// Connections (Data Sources)
+		v1.POST("/connections", r.connectionHandler.AddConnection)
+		v1.GET("/connections", r.connectionHandler.GetConnections)
+
 		// Findings
 		v1.GET("/findings", r.findingsHandler.GetFindings)
 		v1.POST("/findings/:id/feedback", r.findingsHandler.SubmitFeedback)

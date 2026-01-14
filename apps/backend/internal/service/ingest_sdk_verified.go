@@ -45,6 +45,17 @@ func (s *IngestionService) IngestSDKVerified(ctx context.Context, input Verified
 
 	// Process each finding
 	for _, vf := range input.Findings {
+		fmt.Printf("🔍 Processing finding: PII type = '%s'\n", vf.PIIType)
+
+		// CRITICAL: Validate PII type against locked scope (LAW 3)
+		// Backend MUST reject findings with PII types not in the locked 11 India types
+		if !IsLockedPIIType(vf.PIIType) {
+			fmt.Printf("⚠️  REJECTED finding: PII type '%s' not in locked scope (11 India PIIs only)\n", vf.PIIType)
+			continue // Skip this finding - do not ingest
+		}
+
+		fmt.Printf("✅ Accepted finding: PII type '%s' is valid\n", vf.PIIType)
+
 		if err := s.processSingleSDKFinding(ctx, tx, adapter, scanRun.ID, &vf); err != nil {
 			// Log error but continue processing other findings
 			fmt.Printf("Error processing finding: %v\n", err)

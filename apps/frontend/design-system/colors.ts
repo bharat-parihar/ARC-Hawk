@@ -1,38 +1,37 @@
 /**
- * ARC-Hawk Design System - Colors (High Contrast Monochrome)
+ * ARC-Hawk Design System - Colors (Dark Enterprise Theme)
  *
- * Strict, high-visibility black & white palette.
- * Text is pure black or very dark gray.
- * Backgrounds are white.
+ * Risk-First, Dark Mode Palette.
+ * Slate 900 backgrounds, vivid risk colors.
  */
 
 // ============================================
-// PRIMITIVES
+// PRIMITIVES (Slate Palette)
 // ============================================
 
 export const neutral = {
-    50: '#F9FAFB',  // Very light gray
-    100: '#F3F4F6',
-    200: '#E5E7EB',
-    300: '#D4D4D4', // Distinct border
-    400: '#A3A3A3',
-    500: '#737373',
-    600: '#525252',
-    700: '#404040',
-    800: '#262626',
-    900: '#000000', // Pure Black
+    50: '#F8FAFC',
+    100: '#F1F5F9',
+    200: '#E2E8F0',
+    300: '#CBD5E1',
+    400: '#94A3B8',
+    500: '#64748B',
+    600: '#475569',
+    700: '#334155',
+    800: '#1E293B',
+    900: '#0F172A', // Main Background
 } as const;
 
 export const brand = {
-    primary: '#000000',     // Black Brand (Swiss Style)
-    hover: '#333333',       // Dark Gray
+    primary: '#3B82F6',     // Blue 500
+    hover: '#2563EB',       // Blue 600
 } as const;
 
 export const status = {
-    success: '#166534',     // Dark Green (High Contrast)
-    warning: '#854D0E',     // Dark Amber
-    risk: '#991B1B',        // Dark Red
-    info: '#1E40AF',        // Dark Blue
+    success: '#10B981',     // Emerald 500
+    warning: '#F59E0B',     // Amber 500
+    risk: '#DC2626',        // Red 600
+    info: '#3B82F6',        // Blue 500
 } as const;
 
 // ============================================
@@ -40,32 +39,32 @@ export const status = {
 // ============================================
 
 export const background = {
-    primary: '#FFFFFF',     // Pure White
-    surface: '#FFFFFF',
-    elevated: '#FFFFFF',
-    muted: neutral[100],
-    card: '#FFFFFF',
+    primary: '#0F172A',     // Slate 900
+    surface: '#1E293B',     // Slate 800 (Card)
+    elevated: '#334155',    // Slate 700 (Hover)
+    muted: '#1E293B',       // Slate 800 - was neutral[100]
+    card: '#1E293B',
 } as const;
 
 export const border = {
-    default: '#D4D4D4',     // High contrast border
-    subtle: '#E5E7EB',
-    strong: '#000000',      // Black border for emphasis
+    default: '#334155',     // Slate 700
+    subtle: '#1E293B',      // Slate 800
+    strong: '#475569',      // Slate 600
 } as const;
 
 export const text = {
-    primary: '#000000',     // Pure Black
-    secondary: '#262626',   // Almost Black
-    muted: '#525252',       // Dark Gray (AA Compliant)
-    inverse: '#FFFFFF',
+    primary: '#F8FAFC',     // Slate 50
+    secondary: '#CBD5E1',   // Slate 300
+    muted: '#94A3B8',       // Slate 400
+    inverse: '#0F172A',
 } as const;
 
 export const nodeColors = {
-    system: '#000000',      // Black
-    asset: '#404040',       // Dark Gray
-    pii: '#D97706',         // Dark Amber
-    sensitive: '#DC2626',   // Red
-    category: '#525252',    // Gray
+    system: '#3B82F6',      // Blue
+    asset: '#CBD5E1',       // Slate 300
+    pii: '#EAB308',         // Amber 500
+    sensitive: '#DC2626',   // Red 600
+    category: '#94A3B8',    // Slate 400
 } as const;
 
 // ============================================
@@ -81,7 +80,7 @@ export const colors = {
     text,
     nodeColors,
 
-    // Backward compatibility for existing components
+    // Backward compatibility
     state: {
         risk: status.risk,
         success: status.success,
@@ -95,7 +94,7 @@ export const colors = {
         state: status,
         node: nodeColors,
     },
-    // Legacy palettes (kept for build safety, but we should avoid using them directly)
+    // Keep these but they shouldn't be main drivers
     blue: {
         50: '#EFF6FF', 100: '#DBEAFE', 200: '#BFDBFE', 300: '#93C5FD',
         400: '#60A5FA', 500: '#3B82F6', 600: '#2563EB', 700: '#1D4ED8',
@@ -131,26 +130,40 @@ export const colors = {
 export function getNodeColor(type: string, riskScore: number = 0) {
     switch (type) {
         case 'system':
-            return { bg: '#F3F4F6', border: '#000000', text: '#000000' };
+            return {
+                bg: background.surface,
+                border: brand.primary,
+                text: text.primary
+            };
         case 'asset':
         case 'file':
         case 'table':
-            return { bg: '#FFFFFF', border: '#525252', text: '#000000' };
+            return {
+                bg: background.surface,
+                border: border.default,
+                text: text.secondary
+            };
         case 'finding':
             const isRisk = riskScore >= 90;
             return {
-                bg: isRisk ? '#FEF2F2' : '#FFFFFF',
+                bg: isRisk ? 'rgba(220, 38, 38, 0.1)' : background.surface, // Red tint
                 border: isRisk ? status.risk : border.default,
-                text: isRisk ? '#991B1B' : '#000000'
+                text: isRisk ? status.risk : text.secondary
             };
+        case 'pii_category':
+            return {
+                bg: background.surface,
+                border: status.warning,
+                text: text.secondary
+            }
         default:
-            return { bg: '#F9FAFB', border: border.default, text: '#000000' };
+            return { bg: background.surface, border: border.default, text: text.secondary };
     }
 }
 
 export function getEdgeColor(type: string) {
     if (type === 'EXPOSES') return status.risk;
-    return '#525252'; // Dark gray edges
+    return '#475569'; // Slate 600
 }
 
 export default colors;

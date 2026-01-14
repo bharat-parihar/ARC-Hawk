@@ -2,26 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import Topbar from '@/components/Topbar';
-import SummaryCards from '@/components/SummaryCards';
-import FindingsTable from '@/components/FindingsTable';
 import InfoPanel from '@/components/InfoPanel';
 import LineageCanvas from '@/modules/lineage/LineageCanvas';
 import LoadingState from '@/components/LoadingState';
 import { lineageApi } from '@/services/lineage.api';
-import { findingsApi } from '@/services/findings.api';
-import { classificationApi } from '@/services/classification.api';
-import type {
-    ClassificationSummary,
-    FindingsResponse,
-} from '@/types';
-import type { LineageGraphData, LineageNode } from '@/modules/lineage/lineage.types';
-import { colors } from '@/design-system/colors';
-import { theme } from '@/design-system/themes';
+import type { LineageGraphData } from '@/modules/lineage/lineage.types';
+import { theme } from '@/design-system/theme';
 
 export default function DashboardPage() {
     const [lineageData, setLineageData] = useState<LineageGraphData | null>(null);
-    const [findingsData, setFindingsData] = useState<FindingsResponse | null>(null);
-    const [classificationSummary, setClassificationSummary] = useState<ClassificationSummary | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -36,30 +25,17 @@ export default function DashboardPage() {
             const assetId = params.get('assetId');
             if (assetId) {
                 setFocusedAssetId(assetId);
-                // Also set lineagemode if needed? Semantic graph supports full search.
             }
         }
         fetchData();
-    }, []);
-
-    useEffect(() => {
-        fetchFindings();
     }, []);
 
     const fetchData = async () => {
         try {
             setLoading(true);
             setError(null);
-
-            const dataPromises: Promise<any>[] = [
-                classificationApi.getSummary(),
-                lineageApi.getLineage(undefined, undefined),
-            ];
-
-            const [classification, graphData] = await Promise.all(dataPromises);
-
+            const graphData = await lineageApi.getLineage(undefined, undefined);
             setLineageData(graphData);
-            setClassificationSummary(classification);
         } catch (err: any) {
             console.error('Error fetching data:', err);
             setError(err.message || 'Failed to fetch data from backend. Make sure the server is running.');
@@ -68,41 +44,7 @@ export default function DashboardPage() {
         }
     };
 
-    const fetchFindings = async () => {
-        try {
-            const findings = await findingsApi.getFindings({
-                page: 1,
-                page_size: 20,
-            });
-
-            setFindingsData({
-                findings: findings.findings,
-                total: findings.total,
-                page: 1,
-                page_size: 20,
-                total_pages: Math.ceil(findings.total / 20)
-            });
-        } catch (err: any) {
-            console.error('Error fetching findings:', err);
-        }
-    };
-
-
-
     // Calculate metrics
-    const totalFindings = findingsData?.total || 0;
-    const sensitivePIICount = classificationSummary?.by_type?.['Sensitive Personal Data']?.count || 0;
-    const criticalFindings = findingsData?.findings.filter(f => f.severity === 'Critical').length || 0;
-
-    // Calculate high-risk assets
-    const highRiskAssets = lineageData?.nodes?.filter(n => {
-        if (n.type === 'asset' && 'risk_score' in n.metadata) {
-            return (n.metadata.risk_score as number) >= 70;
-        }
-        return false;
-    }).length || 0;
-
-    // Calculate overall risk score
     const avgRiskScore = lineageData?.nodes?.length
         ? Math.round(lineageData.nodes.reduce((sum, n) => {
             if (n.type === 'asset' && 'risk_score' in n.metadata) {
@@ -125,7 +67,7 @@ export default function DashboardPage() {
         );
     }, [lineageData, searchQuery]);
 
-    // Filter edges to only those connecting visible nodes
+    // Filter edges
     const filteredEdges = React.useMemo(() => {
         const edges = lineageData?.edges || [];
         if (!searchQuery) return edges;
@@ -140,7 +82,7 @@ export default function DashboardPage() {
     }
 
     return (
-        <div style={{ padding: '24px', minHeight: '100vh', backgroundColor: colors.background.primary }}>
+        <div style={{ padding: '0', minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
             <Topbar
                 scanTime={new Date().toISOString()}
                 environment="Production"
@@ -148,21 +90,20 @@ export default function DashboardPage() {
                 onSearch={setSearchQuery}
             />
 
-            <div style={{ padding: '32px', maxWidth: '1600px', margin: '0 auto', height: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '32px', maxWidth: '1600px', margin: '0 auto', height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column' }}>
                 {error && (
                     <div
                         style={{
                             padding: '16px 24px',
-                            backgroundColor: '#FEF2F2',
-                            border: '1px solid #FECACA',
+                            backgroundColor: `${theme.colors.status.error}15`,
+                            border: `1px solid ${theme.colors.status.error}40`,
                             borderRadius: '12px',
-                            color: '#B91C1C',
+                            color: theme.colors.status.error,
                             marginBottom: '24px',
                             fontWeight: 600,
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                         }}
                     >
                         <span>⚠️</span>
@@ -185,7 +126,7 @@ export default function DashboardPage() {
                             style={{
                                 fontSize: '24px',
                                 fontWeight: 800,
-                                color: colors.text.primary,
+                                color: theme.colors.text.primary,
                                 margin: 0,
                                 letterSpacing: '-0.02em',
                             }}
@@ -196,12 +137,12 @@ export default function DashboardPage() {
                         <span
                             style={{
                                 fontSize: '14px',
-                                color: colors.text.secondary,
+                                color: theme.colors.text.secondary,
                                 fontWeight: 600,
-                                backgroundColor: colors.background.surface,
+                                backgroundColor: theme.colors.background.card,
                                 padding: '6px 12px',
                                 borderRadius: '20px',
-                                border: `1px solid ${colors.border.subtle}`,
+                                border: `1px solid ${theme.colors.border.subtle}`,
                             }}
                         >
                             🔗 Neo4j Semantic Graph
@@ -212,10 +153,11 @@ export default function DashboardPage() {
                     {lineageData ? (
                         <div style={{
                             flex: 1,
-                            border: `1px solid ${colors.border.strong}`,
+                            border: `1px solid ${theme.colors.border.default}`,
                             borderRadius: '12px',
                             overflow: 'hidden',
-                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                            backgroundColor: theme.colors.background.card,
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.4)'
                         }}>
                             <LineageCanvas
                                 nodes={filteredNodes}
@@ -229,9 +171,9 @@ export default function DashboardPage() {
                     )}
                 </div>
 
-                {/* Findings Table moved to /findings page */}
+                {/* Findings Link */}
                 <div style={{ marginTop: '24px', textAlign: 'center' }}>
-                    <a href="/findings" className="text-blue-600 hover:underline text-sm font-medium">
+                    <a href="/findings" style={{ color: theme.colors.primary.DEFAULT, fontSize: '14px', fontWeight: 600, textDecoration: 'none' }}>
                         View Detailed Findings &rarr;
                     </a>
                 </div>
