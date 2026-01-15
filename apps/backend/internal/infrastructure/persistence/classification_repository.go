@@ -3,7 +3,6 @@ package persistence
 import (
 	"context"
 
-	"encoding/json"
 	"fmt"
 
 	"github.com/arc-platform/backend/internal/domain/entity"
@@ -15,25 +14,16 @@ import (
 // ============================================================================
 
 func (r *PostgresRepository) CreateClassification(ctx context.Context, classification *entity.Classification) error {
-	signalBreakdownJSON, err := json.Marshal(classification.SignalBreakdown)
-	if err != nil {
-		return fmt.Errorf("failed to marshal signal breakdown: %w", err)
-	}
-
 	query := `
 		INSERT INTO classifications (id, finding_id, classification_type, sub_category, 
-			confidence_score, justification, dpdpa_category, requires_consent, retention_period,
-			signal_breakdown, engine_version, rule_score, presidio_score, context_score, entropy_score)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			confidence_score, justification, dpdpa_category, requires_consent, retention_period)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING created_at, updated_at`
 
 	return r.db.QueryRowContext(ctx, query,
 		classification.ID, classification.FindingID, classification.ClassificationType,
 		classification.SubCategory, classification.ConfidenceScore, classification.Justification,
 		classification.DPDPACategory, classification.RequiresConsent, classification.RetentionPeriod,
-		signalBreakdownJSON, classification.EngineVersion,
-		classification.RuleScore, classification.PresidioScore,
-		classification.ContextScore, classification.EntropyScore,
 	).Scan(&classification.CreatedAt, &classification.UpdatedAt)
 }
 
@@ -41,7 +31,6 @@ func (r *PostgresRepository) GetClassificationsByFindingID(ctx context.Context, 
 	query := `
 		SELECT id, finding_id, classification_type, sub_category, confidence_score, 
 			justification, dpdpa_category, requires_consent, retention_period, 
-			signal_breakdown, engine_version, rule_score, presidio_score, context_score, entropy_score,
 			created_at, updated_at
 		FROM classifications 
 		WHERE finding_id = $1`
@@ -55,14 +44,12 @@ func (r *PostgresRepository) GetClassificationsByFindingID(ctx context.Context, 
 	var classifications []*entity.Classification
 	for rows.Next() {
 		c := &entity.Classification{}
-		var signalBreakdownJSON []byte
 		var retentionPeriod *string // Use pointer to handle NULL
 
 		err := rows.Scan(
 			&c.ID, &c.FindingID, &c.ClassificationType, &c.SubCategory,
 			&c.ConfidenceScore, &c.Justification, &c.DPDPACategory,
-			&c.RequiresConsent, &retentionPeriod, // Scan into pointer
-			&signalBreakdownJSON, &c.EngineVersion, &c.RuleScore, &c.PresidioScore, &c.ContextScore, &c.EntropyScore,
+			&c.RequiresConsent, &retentionPeriod,
 			&c.CreatedAt, &c.UpdatedAt,
 		)
 		if err != nil {
@@ -74,12 +61,6 @@ func (r *PostgresRepository) GetClassificationsByFindingID(ctx context.Context, 
 			c.RetentionPeriod = *retentionPeriod
 		} else {
 			c.RetentionPeriod = "" // Default to empty string if NULL
-		}
-
-		if len(signalBreakdownJSON) > 0 {
-			if err := json.Unmarshal(signalBreakdownJSON, &c.SignalBreakdown); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal signal breakdown: %w", err)
-			}
 		}
 
 		classifications = append(classifications, c)

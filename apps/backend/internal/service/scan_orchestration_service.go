@@ -55,13 +55,26 @@ func NewScanOrchestrationService(pgRepo *persistence.PostgresRepository) *ScanOr
 // ScanAllAssets triggers scans for all assets
 func (s *ScanOrchestrationService) ScanAllAssets(ctx context.Context) (*ScanAllStatus, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
-	// Get all assets
+	fmt.Printf("🚀 Starting Scan All Assets...\n")
+
+	// STEP 1: Sync connections from connection.yml to PostgreSQL assets
+	// This ensures we have assets to scan even if DB was empty
+	fmt.Printf("🔄 Syncing connections from connection.yml to assets...\n")
+	connectionService := NewConnectionService(s.pgRepo)
+	if err := connectionService.SyncConnectionsToAssets(ctx); err != nil {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("failed to sync connections: %w", err)
+	}
+
+	// STEP 2: Get all assets (now populated from connection.yml)
 	assets, err := s.pgRepo.ListAssets(ctx, 10000, 0)
 	if err != nil {
+		s.mu.Unlock()
 		return nil, fmt.Errorf("failed to list assets: %w", err)
 	}
+
+	fmt.Printf("📊 Found %d assets to scan\n", len(assets))
 
 	// Clear old jobs
 	s.jobs = make(map[string]*ScanJob)
@@ -96,10 +109,25 @@ func (s *ScanOrchestrationService) ScanAllAssets(ctx context.Context) (*ScanAllS
 
 	fmt.Printf("🚀 Created %d scan jobs (Global Scan Mode)\n", len(s.jobs))
 
-	// Start background processing
+	// Build status manually to avoid lock contention
+	status := &ScanAllStatus{
+		TotalJobs:       len(s.jobs),
+		QueuedJobs:      len(s.jobs),
+		RunningJobs:     0,
+		CompletedJobs:   0,
+		FailedJobs:      0,
+		OverallStatus:   "scanning",
+		StartedAt:       time.Now(),
+		ProgressPercent: 0,
+	}
+
+	// CRITICAL: Release lock BEFORE starting goroutine
+	s.mu.Unlock()
+
+	// Start background processing (now lock is released)
 	go s.processJobs()
 
-	return s.GetScanStatus(ctx), nil
+	return status, nil
 }
 
 // processJobs executes the REAL Python Scanner
@@ -116,23 +144,39 @@ func (s *ScanOrchestrationService) processJobs() {
 
 	// Construct command to run scanner
 	// We run python3 from the scanner directory to ensure imports work
+	// NOTE: Removed --json to allow auto-ingest to run (--json causes early exit)
 	cmd := exec.Command("python3", "hawk_scanner/main.py", "all",
 		"--connection", "config/connection.yml",
 		"--fingerprint", "../../fingerprint.yml",
 		"--ingest-url", "http://localhost:8080/api/v1/scans/ingest-verified",
-		"--json", "scan_output.json")
+		"--quiet") // Use --quiet to suppress table output
 
 	// Set working directory to apps/scanner (relative to apps/backend)
 	cmd.Dir = "../scanner"
 
-	// Capture output for debugging
-	output, err := cmd.CombinedOutput()
+	// Start scanner asynchronously (non-blocking)
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("❌ Failed to start scanner: %v\n", err)
+		s.mu.Lock()
+		for _, job := range s.jobs {
+			job.Status = "failed"
+			job.Error = "Failed to start scanner process"
+			job.CompletedAt = time.Now()
+		}
+		s.mu.Unlock()
+		return
+	}
+
+	fmt.Printf("✅ Scanner process started (PID: %d)\n", cmd.Process.Pid)
+
+	// Wait for scanner to complete in background
+	err := cmd.Wait()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if err != nil {
-		fmt.Printf("❌ Scanner execution failed: %v\nOutput: %s\n", err, string(output))
+		fmt.Printf("❌ Scanner execution failed: %v\n", err)
 		// Mark all as failed
 		for _, job := range s.jobs {
 			job.Status = "failed"
@@ -143,7 +187,6 @@ func (s *ScanOrchestrationService) processJobs() {
 	}
 
 	fmt.Println("✅ Scanner completed successfully!")
-	fmt.Println(string(output))
 
 	// Mark all as completed
 	for _, job := range s.jobs {

@@ -132,7 +132,7 @@ func main() {
 	scanOrchestrationService := service.NewScanOrchestrationService(repo)
 	complianceService := service.NewComplianceService(repo, neo4jRepo)
 	analyticsService := service.NewAnalyticsService(repo)
-	connectionService := service.NewConnectionService()
+	connectionService := service.NewConnectionService(repo)
 
 	// Phase 2: SDK-verified ingestion handler
 	sdkIngestHandler := api.NewSDKIngestHandler(ingestionService)

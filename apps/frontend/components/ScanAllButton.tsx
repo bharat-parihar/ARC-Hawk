@@ -17,12 +17,20 @@ export default function ScanAllButton({ onScanComplete }: ScanAllButtonProps) {
         try {
             setIsScanning(true);
             setShowProgress(true);
+            setProgress(0);
 
+            // Start scan - backend will handle everything
+            console.log('🚀 Starting scan...');
             const response = await fetch(`/api/v1/scans/scan-all`, {
                 method: 'POST',
             });
 
-            if (!response.ok) throw new Error('Failed to start scan');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Failed to start scan');
+            }
+
+            console.log('✅ Scan initiated successfully');
 
             // Poll status
             const pollInterval = setInterval(async () => {
@@ -49,6 +57,8 @@ export default function ScanAllButton({ onScanComplete }: ScanAllButtonProps) {
         } catch (error) {
             console.error('Scan failed:', error);
             setIsScanning(false);
+            setShowProgress(false);
+            alert(`Scan failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     };
 

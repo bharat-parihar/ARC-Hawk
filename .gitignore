@@ -172,6 +172,10 @@ push_to_github.sh
 # Backend compiled binaries and logs
 apps/backend/server
 apps/backend/*.log
+arc-backend
+backend*.log
+frontend*.log
+scan*.log
 
 # Scan results
 output.csv
@@ -182,6 +186,7 @@ apps/scanner/*_scan.json
 apps/scanner/output.json
 apps/scanner/scan_output.json
 apps/scanner/previous_alerts.json
+apps/scanner/*.log
 
 # Node modules
 node_modules/

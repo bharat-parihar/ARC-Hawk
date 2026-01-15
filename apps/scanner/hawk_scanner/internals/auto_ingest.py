@@ -63,9 +63,8 @@ def ingest_verified_findings(args, verified_findings, scan_metadata=None):
     
     from hawk_scanner.internals import system
     
-    # Use /ingest-verified endpoint
-    base_url = args.ingest_url.rstrip('/ingest').rstrip('/api/v1/scans').rstrip('/ingest-verified')
-    ingest_url = f"{base_url}/api/v1/scans/ingest-verified"
+    # Use the ingest URL directly as provided
+    ingest_url = args.ingest_url
     
     system.print_info(args, f"🚀 Auto-ingesting VERIFIED findings to {ingest_url}")
     
@@ -79,16 +78,17 @@ def ingest_verified_findings(args, verified_findings, scan_metadata=None):
         else:
             findings_dicts.append(f.__dict__)
     
-    # Prepare payload with VerifiedFinding schema
+    # Prepare payload with VerifiedScanInput schema
+    # Backend expects: { scan_id, scan_metadata, findings }
     payload = {
+        "scan_id": f"scan_{int(time.time())}",
         "scan_metadata": scan_metadata or {
             "scanner_version": "hawk-eye-scanner-2.0-cli",
             "scan_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "intelligence_at_edge": True,
             "sdk_validated": True,
         },
-        "verified_findings": findings_dicts,
-        "total_findings": len(findings_dicts)
+        "findings": findings_dicts  # Changed from 'verified_findings' to 'findings'
     }
     
     # Create session with retry logic
@@ -152,15 +152,67 @@ def ingest_scan_results(args, grouped_results, scan_metadata=None):
             }
             
             pattern_name = result.get('pattern_name', 'Unknown')
+            
+            # Map scanner pattern names to backend's LOCKED 11 India PII types
+            # Backend only accepts these exact PII type names
             pii_type_map = {
+                # Aadhaar variations
                 "Aadhar": "IN_AADHAAR",
+                "Aadhaar": "IN_AADHAAR",
+                "AADHAAR": "IN_AADHAAR",
+                
+                # PAN variations  
                 "PAN": "IN_PAN",
-                "Email": "EMAIL_ADDRESS",
+                "Pan": "IN_PAN",
+                
+                # Passport
+                "Passport": "IN_PASSPORT",
+                "PASSPORT": "IN_PASSPORT",
+                
+                # Voter ID
+                "Voter ID": "IN_VOTER_ID",
+                "VOTER_ID": "IN_VOTER_ID",
+                
+                # Driving License
+                "Driving License": "IN_DRIVING_LICENSE",
+                "DRIVING_LICENSE": "IN_DRIVING_LICENSE",
+                
+                # Vehicle Registration
+                "Vehicle Registration": "IN_VEHICLE_REGISTRATION",
+                "VEHICLE_REGISTRATION": "IN_VEHICLE_REGISTRATION",
+                
+                # GST
+                "GST": "IN_GST",
+                "GSTIN": "IN_GST",
+                
+                # Bank Account
+                "Bank Account": "IN_BANK_ACCOUNT",
+                "BANK_ACCOUNT": "IN_BANK_ACCOUNT",
+                
+                # IFSC
+                "IFSC": "IN_IFSC",
+                "IFSC Code": "IN_IFSC",
+                
+                # Credit Card
+                "Credit Card": "CREDIT_CARD",
+                "CREDIT_CARD": "CREDIT_CARD",
+                
+                # Phone
                 "Phone": "PHONE_NUMBER",
-                "Credit Card": "CREDIT_CARD"
+                "Phone Number": "PHONE_NUMBER",
+                "Indian Phone Number": "PHONE_NUMBER",
+                
+                # Email
+                "Email": "EMAIL_ADDRESS",
+                "Email Address": "EMAIL_ADDRESS"
             }
-            # Try to map pattern name to PII Type, else uppercase it
-            pii_type = pii_type_map.get(pattern_name, pattern_name.upper().replace(" ", "_"))
+            
+            # Try to map pattern name to PII Type
+            # If not in map, skip this finding (backend will reject it anyway)
+            pii_type = pii_type_map.get(pattern_name)
+            if not pii_type:
+                # Skip findings that aren't in the locked 11 India PII types
+                continue
             
             for match_value in result.get('matches', []):
                 # Hash match
