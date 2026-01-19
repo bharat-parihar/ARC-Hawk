@@ -10,11 +10,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/arc-platform/backend/internal/api"
-	"github.com/arc-platform/backend/internal/config"
-	"github.com/arc-platform/backend/internal/infrastructure/database"
-	"github.com/arc-platform/backend/internal/infrastructure/persistence"
-	"github.com/arc-platform/backend/internal/service"
+	"github.com/arc-platform/backend/modules/shared/config"
+	"github.com/arc-platform/backend/modules/analytics"
+	"github.com/arc-platform/backend/modules/assets"
+	"github.com/arc-platform/backend/modules/compliance"
+	"github.com/arc-platform/backend/modules/connections"
+	"github.com/arc-platform/backend/modules/lineage"
+	"github.com/arc-platform/backend/modules/masking"
+	"github.com/arc-platform/backend/modules/scanning"
+	"github.com/arc-platform/backend/modules/shared/infrastructure/database"
+	"github.com/arc-platform/backend/modules/shared/infrastructure/persistence"
+	"github.com/arc-platform/backend/modules/shared/interfaces"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -38,6 +45,9 @@ func main() {
 	}
 	gin.SetMode(ginMode)
 
+	log.Println("🚀 Starting ARC-Hawk Backend (Modular Monolith Architecture)")
+	log.Println("=" + string(make([]byte, 70)))
+
 	// Connect to database
 	dbConfig := database.NewConfig()
 	db, err := database.Connect(dbConfig)
@@ -46,12 +56,9 @@ func main() {
 	}
 	defer db.Close()
 
-	log.Println("Database connection established")
+	log.Println("✅ Database connection established")
 
-	// Initialize repository
-	repo := persistence.NewPostgresRepository(db)
-
-	// Run database migrations using golang-migrate
+	// Run database migrations
 	migrationURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		os.Getenv("DB_USER"),
 		os.Getenv("DB_PASSWORD"),
@@ -78,99 +85,105 @@ func main() {
 		log.Printf("✅ Database migrated to version %d (dirty: %v)", version, dirty)
 	}
 
-	// Initialize services
-	enrichmentService := service.NewEnrichmentService(repo)
-	classificationService := service.NewClassificationService(repo, cfg)
-	classificationSummaryService := service.NewClassificationSummaryService(repo)
+	// Connect to Neo4j
+	neo4jURI := getEnv("NEO4J_URI", "bolt://127.0.0.1:7687")
+	neo4jUsername := getEnv("NEO4J_USERNAME", "neo4j")
+	neo4jPassword := getEnv("NEO4J_PASSWORD", "password123")
 
-	// REMOVED: Presidio initialization - Intelligence-at-Edge architecture
-	// Presidio SDK now runs ONLY in Python scanner, not in Go backend
-	// Backend trusts scanner's verified findings without re-running ML
-
-	// ==================================================================================
-	// Neo4j Configuration - REQUIRED (Intelligence-at-Edge Architecture)
-	// ==================================================================================
-	// Neo4j is the ONLY source of truth for lineage - no fallbacks allowed
-	// System will FAIL to start if Neo4j is unavailable
-	// ==================================================================================
-
-	neo4jURI := os.Getenv("NEO4J_URI")
-	if neo4jURI == "" {
-		neo4jURI = "bolt://127.0.0.1:7687" // Default
-	}
-	neo4jUsername := os.Getenv("NEO4J_USERNAME")
-	if neo4jUsername == "" {
-		neo4jUsername = "neo4j"
-	}
-	neo4jPassword := os.Getenv("NEO4J_PASSWORD")
-	if neo4jPassword == "" {
-		neo4jPassword = "password123"
-	}
-
-	log.Printf("🔗 Connecting to Neo4j (REQUIRED) at %s...", neo4jURI)
+	log.Printf("🔗 Connecting to Neo4j at %s...", neo4jURI)
 
 	neo4jRepo, err := persistence.NewNeo4jRepository(neo4jURI, neo4jUsername, neo4jPassword)
 	if err != nil {
-		log.Fatalf("❌ FATAL: Neo4j connection REQUIRED but failed: %v\n"+
-			"   Neo4j is mandatory for lineage - system cannot start without it.\n"+
-			"   Please ensure Neo4j is running at %s", err, neo4jURI)
+		log.Fatalf("❌ FATAL: Neo4j connection failed: %v", err)
 	}
 
-	log.Printf("✅ Neo4j lineage ONLINE (REQUIRED) at %s", neo4jURI)
-	log.Printf("   All asset lineage will be stored in Neo4j graph")
+	log.Printf("✅ Neo4j connection established")
 
-	// Create semantic lineage service with mandatory Neo4j
-	semanticLineageService := service.NewSemanticLineageService(neo4jRepo, repo)
+	// Initialize Module Registry
+	log.Println("\n📦 Initializing Modules...")
+	log.Println("=" + string(make([]byte, 70)))
 
-	// Create remaining services
-	ingestionService := service.NewIngestionService(repo, classificationService, enrichmentService, semanticLineageService)
-	findingsService := service.NewFindingsService(repo)
-	assetService := service.NewAssetService(repo)
-	datasetService := service.NewDatasetService(repo)
+	registry := interfaces.NewModuleRegistry()
 
-	// NEW: Product & UX services
-	scanOrchestrationService := service.NewScanOrchestrationService(repo)
-	complianceService := service.NewComplianceService(repo, neo4jRepo)
-	analyticsService := service.NewAnalyticsService(repo)
-	connectionService := service.NewConnectionService(repo)
-
-	// Phase 2: SDK-verified ingestion handler
-	sdkIngestHandler := api.NewSDKIngestHandler(ingestionService)
-
-	// Phase 3: Unified lineage handler (V2 - 3-level hierarchy only)
-	lineageHandlerV2 := api.NewLineageHandlerV2(semanticLineageService)
-
-	// Initialize router (NO old lineage service)
-	r := gin.Default()
-	apiRouter := api.NewRouter(
-		ingestionService,
-		classificationService,
-		classificationSummaryService,
-		findingsService,
-		assetService,
-		semanticLineageService,
-		datasetService,
-		scanOrchestrationService,
-		complianceService,
-		analyticsService,
-		connectionService,
-	)
-
-	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
-	if allowedOrigins == "" {
-		allowedOrigins = "http://localhost:3000"
+	// Register all modules
+	modules := []interfaces.Module{
+		scanning.NewScanningModule(),       // Scanning & Classification (combined)
+		assets.NewAssetsModule(),           // Asset Management
+		lineage.NewLineageModule(),         // Data Lineage
+		compliance.NewComplianceModule(),   // Compliance Posture
+		masking.NewMaskingModule(),         // Data Masking
+		analytics.NewAnalyticsModule(),     // Analytics & Heatmaps
+		connections.NewConnectionsModule(), // Connections & Orchestration
 	}
-	apiRouter.SetupRoutes(r, allowedOrigins, sdkIngestHandler, lineageHandlerV2)
+
+	for _, module := range modules {
+		if err := registry.Register(module); err != nil {
+			log.Fatalf("Failed to register module %s: %v", module.Name(), err)
+		}
+		log.Printf("📌 Registered module: %s", module.Name())
+	}
+
+	// Prepare module dependencies
+	deps := &interfaces.ModuleDependencies{
+		DB:        db,
+		Neo4jRepo: neo4jRepo,
+		Config:    cfg,
+		Registry:  registry,
+	}
+
+	// Initialize all modules
+	if err := registry.InitializeAll(deps); err != nil {
+		log.Fatalf("Failed to initialize modules: %v", err)
+	}
+
+	log.Println("\n✅ All modules initialized successfully")
+	log.Println("=" + string(make([]byte, 70)))
+
+	// Setup HTTP server
+	router := gin.Default()
+
+	// CORS middleware
+	allowedOrigins := getEnv("ALLOWED_ORIGINS", "http://localhost:3000")
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{allowedOrigins},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+
+	// Recovery middleware
+	router.Use(gin.Recovery())
+
+	// Health check
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":       "healthy",
+			"service":      "arc-platform-backend",
+			"architecture": "modular-monolith",
+			"modules":      len(modules),
+		})
+	})
+
+	// Register all module routes
+	log.Println("\n🛣️  Registering Module Routes...")
+	log.Println("=" + string(make([]byte, 70)))
+
+	apiV1 := router.Group("/api/v1")
+	for _, module := range registry.GetAll() {
+		module.RegisterRoutes(apiV1)
+	}
+
+	log.Println("\n✅ All routes registered")
+	log.Println("=" + string(make([]byte, 70)))
 
 	// Server configuration
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	port := getEnv("PORT", "8080")
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", port),
-		Handler:      r,
+		Handler:      router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -178,7 +191,11 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		log.Printf("Starting server on port %s", port)
+		log.Printf("\n🚀 Server starting on port %s", port)
+		log.Printf("📡 API endpoint: http://localhost:%s/api/v1", port)
+		log.Printf("🏥 Health check: http://localhost:%s/health", port)
+		log.Println("=" + string(make([]byte, 70)))
+
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
@@ -189,7 +206,12 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down server...")
+	log.Println("\n🛑 Shutting down server...")
+
+	// Shutdown all modules
+	if err := registry.ShutdownAll(); err != nil {
+		log.Printf("Error during module shutdown: %v", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -198,7 +220,7 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
-	log.Println("Server exited")
+	log.Println("✅ Server exited cleanly")
 }
 
 func getEnv(key, fallback string) string {

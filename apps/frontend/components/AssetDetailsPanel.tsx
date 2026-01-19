@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { assetsApi } from '@/services/assets.api';
+import MaskingButton from './MaskingButton';
 
 interface AssetDetailsPanelProps {
     assetId: string;
@@ -27,6 +28,19 @@ export default function AssetDetailsPanel({ assetId, onClose }: AssetDetailsPane
         if (assetId) fetchAsset();
     }, [assetId]);
 
+    const handleMaskingComplete = () => {
+        // Refresh asset data after masking
+        const fetchAsset = async () => {
+            try {
+                const data = await assetsApi.getAsset(assetId);
+                setAsset(data);
+            } catch (err) {
+                console.error(err);
+            }
+        };
+        fetchAsset();
+    };
+
     if (!assetId) return null;
 
     return (
@@ -40,6 +54,24 @@ export default function AssetDetailsPanel({ assetId, onClose }: AssetDetailsPane
                 <div className="loading-state">Loading details...</div>
             ) : asset ? (
                 <div className="panel-content">
+                    {/* Masking Status Badge */}
+                    {asset.is_masked && (
+                        <div className="masking-status-badge masked">
+                            🔒 Masked with {asset.masking_strategy}
+                            {asset.masked_at && (
+                                <div className="masked-time">
+                                    Masked on {new Date(asset.masked_at).toLocaleString()}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {!asset.is_masked && asset.total_findings > 0 && (
+                        <div className="masking-status-badge unmasked">
+                            🔓 Unmasked - {asset.total_findings} PII findings
+                        </div>
+                    )}
+
                     <div className="detail-group">
                         <label>Name</label>
                         <div className="value primary">{asset.name}</div>
@@ -82,6 +114,18 @@ export default function AssetDetailsPanel({ assetId, onClose }: AssetDetailsPane
                             </span>
                         </div>
                     </div>
+
+                    {/* Masking Action Button */}
+                    {asset.total_findings > 0 && (
+                        <div className="masking-action">
+                            <MaskingButton
+                                assetId={assetId}
+                                assetName={asset.name}
+                                findingsCount={asset.total_findings}
+                                onMaskingComplete={handleMaskingComplete}
+                            />
+                        </div>
+                    )}
 
                     {asset.file_metadata && Object.keys(asset.file_metadata).length > 0 && (
                         <div className="detail-group">
@@ -132,6 +176,35 @@ export default function AssetDetailsPanel({ assetId, onClose }: AssetDetailsPane
                     font-size: 24px;
                     color: var(--color-text-muted);
                     cursor: pointer;
+                }
+                .masking-status-badge {
+                    padding: 12px 16px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    font-size: 14px;
+                    font-weight: 500;
+                }
+                .masking-status-badge.masked {
+                    background: rgba(34, 197, 94, 0.1);
+                    border: 1px solid rgba(34, 197, 94, 0.3);
+                    color: #86efac;
+                }
+                .masking-status-badge.unmasked {
+                    background: rgba(251, 191, 36, 0.1);
+                    border: 1px solid rgba(251, 191, 36, 0.3);
+                    color: #fcd34d;
+                }
+                .masked-time {
+                    font-size: 12px;
+                    margin-top: 4px;
+                    opacity: 0.8;
+                }
+                .masking-action {
+                    margin: 20px 0;
+                    padding: 16px;
+                    background: rgba(255, 255, 255, 0.03);
+                    border-radius: 8px;
+                    border: 1px solid var(--color-border);
                 }
                 .detail-group {
                     margin-bottom: 20px;
