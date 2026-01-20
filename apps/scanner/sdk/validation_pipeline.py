@@ -1,10 +1,15 @@
 """
-Validation Pipeline - Intelligence-at-Edge
-==========================================
+Validation Pipeline - Intelligence-at-Edge (Enhanced)
+=====================================================
 Maps PII types to validators and creates VerifiedFinding objects.
 
 This is the core integration point that ensures ONLY validated PIIs
 reach the backend. Invalid findings are filtered out here.
+
+ENHANCEMENTS:
+- Context-aware validation to reduce false positives
+- Test data detection and filtering
+- Confidence adjustment based on surrounding keywords
 """
 
 from typing import Optional, Callable
@@ -23,8 +28,14 @@ from sdk.validators.bank_account import validate_bank_account
 from sdk.validators.voter_id import validate_voter_id
 from sdk.validators.driving_license import validate_driving_license
 
+# Import context validator for enhanced detection
+from sdk.validators.context_validator import ContextValidator
+
 # Import PII scope checker
 from sdk.pii_scope import is_allowed_pii
+
+# Initialize global context validator
+_context_validator = ContextValidator()
 
 
 # Validator mapping: PII type -> validator function
@@ -60,12 +71,13 @@ def validate_and_create_finding(presidio_result, text: str, source_info: SourceI
     """
     Validate a Presidio result and create VerifiedFinding if valid.
     
-    Intelligence-at-Edge Workflow:
+    Enhanced Intelligence-at-Edge Workflow:
     1. Check if PII type is in locked scope
     2. Get validator for PII type
     3. Run mathematical/format validation
-    4. If valid, create VerifiedFinding
-    5. If invalid, return None (finding is REJECTED)
+    4. Run context-aware validation (NEW: test data detection, confidence adjustment)
+    5. If valid, create VerifiedFinding with adjusted confidence
+    6. If invalid, return None (finding is REJECTED)
     
     Args:
         presidio_result: Presidio RecognizerResult
@@ -90,23 +102,38 @@ def validate_and_create_finding(presidio_result, text: str, source_info: SourceI
     validator = get_validator(pii_type)
     
     if validator:
-        # Step 3: Run validation
+        # Step 3: Run mathematical validation
         is_valid = validator(matched_value)
         
         if not is_valid:
             print(f"⚠️  Rejected {pii_type}: Failed {validator.__name__} validation")
             return None
         
-        # Valid! Create VerifiedFinding
         validators_passed = [validator.__name__]
         validation_method = "mathematical"  # Luhn, Verhoeff, etc.
+        base_confidence = presidio_result.score
     else:
         # No validator available (shouldn't happen for locked PIIs)
         print(f"⚠️  Warning: No validator for {pii_type}")
         validators_passed = []
         validation_method = "ml"
+        base_confidence = presidio_result.score
     
-    # Step 4: Create VerifiedFinding
+    # Step 4: Context-aware validation (NEW)
+    is_context_valid, adjusted_confidence, rejection_reason = _context_validator.validate_with_context(
+        value=matched_value,
+        pii_type=pii_type,
+        text=text,
+        start=presidio_result.start,
+        end=presidio_result.end,
+        base_confidence=base_confidence
+    )
+    
+    if not is_context_valid:
+        print(f"⚠️  {rejection_reason}")
+        return None
+    
+    # Step 5: Create VerifiedFinding with adjusted confidence
     verified = VerifiedFinding.create_from_analysis(
         presidio_result=presidio_result,
         text=text,
@@ -115,7 +142,15 @@ def validate_and_create_finding(presidio_result, text: str, source_info: SourceI
         validators=validators_passed
     )
     
-    print(f"✅ Verified {pii_type}: {matched_value[:10]}*** (passed {len(validators_passed)} validators)")
+    # Update confidence score with context-adjusted value
+    verified.confidence_score = adjusted_confidence
+    
+    confidence_change = adjusted_confidence - base_confidence
+    confidence_indicator = "↑" if confidence_change > 0 else "↓" if confidence_change < 0 else "="
+    
+    print(f"✅ Verified {pii_type}: {matched_value[:10]}*** "
+          f"(confidence: {adjusted_confidence:.2f} {confidence_indicator}, "
+          f"validators: {len(validators_passed)})")
     
     return verified
 
@@ -149,6 +184,28 @@ def filter_and_validate_results(presidio_results, text: str, source_info: Source
     return verified_findings
 
 
+def set_exclusion_list(exclusion_values: list[str]) -> None:
+    """
+    Set exclusion list for context validator.
+    
+    Args:
+        exclusion_values: List of values to exclude from detection
+    """
+    global _context_validator
+    _context_validator.add_to_exclusion_list(exclusion_values)
+    print(f"📋 Added {len(exclusion_values)} values to exclusion list")
+
+
+def get_validation_statistics() -> dict:
+    """
+    Get validation statistics from context validator.
+    
+    Returns:
+        Dictionary with validation statistics
+    """
+    return _context_validator.get_statistics()
+
+
 if __name__ == "__main__":
     print("=== Validation Pipeline Test ===\n")
     
@@ -167,3 +224,9 @@ if __name__ == "__main__":
     test_aadhaar = "999911112226"  # Example (may not be valid Verhoeff)
     is_valid = aadhaar_validator(test_aadhaar)
     print(f"Aadhaar {test_aadhaar}: Valid = {is_valid}")
+    
+    # Test context validator statistics
+    print("\nContext Validator Statistics:")
+    stats = get_validation_statistics()
+    for key, value in stats.items():
+        print(f"  {key}: {value}")

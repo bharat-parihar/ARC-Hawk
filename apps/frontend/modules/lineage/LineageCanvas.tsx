@@ -115,11 +115,10 @@ function LineageCanvasContent({ nodes: graphNodes, edges: graphEdges, onNodeClic
             <div
                 style={{
                     height: 'calc(100vh - 250px)',
-                    background: colors.background.primary,  // Soft gray background
+                    background: '#0f172a',
                     borderRadius: '12px',
                     overflow: 'hidden',
-                    border: `1px solid ${colors.border.default}`,
-                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
+                    border: '1px solid #334155',
                     position: 'relative',
                 }}
             >
@@ -145,33 +144,46 @@ function LineageCanvasContent({ nodes: graphNodes, edges: graphEdges, onNodeClic
                     maxZoom={2}
                     attributionPosition="bottom-left"
                     proOptions={{ hideAttribution: true }}
+                    defaultEdgeOptions={{
+                        style: {
+                            stroke: '#475569',
+                            strokeWidth: 1.5,
+                        },
+                        animated: false,
+                    }}
                 >
-                    <Controls showInteractive={false} />
+                    <Controls
+                        showInteractive={false}
+                        style={{
+                            background: '#1e293b',
+                            border: '1px solid #334155',
+                            borderRadius: '8px',
+                        }}
+                    />
                     <Background
-                        color={colors.border.subtle}
+                        color="#334155"
                         gap={20}
-                        style={{ opacity: 0.5 }}
+                        size={0.5}
+                        style={{ opacity: 0.3 }}
                     />
                     <MiniMap
                         nodeColor={(n) => {
                             const nodeType = n.data.type;
-                            if (nodeType === 'system') return colors.nodeColors.system;
+                            if (nodeType === 'system') return '#3b82f6';
                             if (nodeType === 'asset' || nodeType === 'file' || nodeType === 'table')
-                                return colors.nodeColors.asset;
-                            if (nodeType === 'data_category' || nodeType === 'category')
-                                return colors.nodeColors.category;
-                            if (nodeType === 'finding') {
-                                return n.data.risk_score >= 90 ? colors.state.risk : colors.border.default;
+                                return '#a855f7';
+                            if (nodeType === 'pii_category') {
+                                const risk = n.data.metadata?.risk_score || 0;
+                                return risk >= 70 ? '#ef4444' : risk >= 40 ? '#f97316' : '#22c55e';
                             }
-                            return colors.border.default;
+                            return '#64748b';
                         }}
                         style={{
-                            border: `1px solid ${colors.border.default}`,
+                            background: '#1e293b',
+                            border: '1px solid #334155',
                             borderRadius: '8px',
-                            background: colors.background.surface,
-                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
                         }}
-                        maskColor="rgba(248, 250, 252, 0.8)"
+                        maskColor="rgba(15, 23, 42, 0.8)"
                     />
                 </ReactFlow>
 

@@ -1,23 +1,62 @@
 'use client';
 
 import React, { useState } from 'react';
-import { theme } from '@/design-system/theme';
+import { usePathname } from 'next/navigation';
+import {
+    Shield,
+    Flame,
+    BarChart3,
+    FolderOpen,
+    GitBranch,
+    Search,
+    Settings,
+    ChevronLeft,
+    ChevronRight,
+    BookOpen,
+    Zap
+} from 'lucide-react';
 
 interface SidebarProps {
-    children?: React.ReactNode;
     collapsed: boolean;
     onToggle: () => void;
 }
 
-export default function Sidebar({ children, collapsed, onToggle }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
+    const pathname = usePathname();
+
+    const navItems = [
+        {
+            section: 'Compliance',
+            items: [
+                { icon: Shield, label: 'Compliance', href: '/compliance' },
+                { icon: Flame, label: 'Analytics', href: '/analytics' },
+                { icon: BarChart3, label: 'Posture', href: '/posture' },
+            ]
+        },
+        {
+            section: 'Data',
+            items: [
+                { icon: FolderOpen, label: 'Assets', href: '/assets' },
+                { icon: GitBranch, label: 'Lineage', href: '/lineage' },
+                { icon: Search, label: 'Findings', href: '/findings' },
+            ]
+        },
+        {
+            section: 'System',
+            items: [
+                { icon: Settings, label: 'Settings', href: '/settings' },
+            ]
+        }
+    ];
+
     return (
         <aside
             style={{
-                width: collapsed ? '64px' : '280px',
+                width: collapsed ? '64px' : '240px',
                 height: '100vh',
-                backgroundColor: theme.colors.background.secondary,
-                borderRight: `1px solid ${theme.colors.border.default}`,
-                transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                background: '#1e293b',
+                borderRight: '1px solid #334155',
+                transition: 'width 0.2s ease',
                 position: 'fixed',
                 left: 0,
                 top: 0,
@@ -30,13 +69,12 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
             {/* Header */}
             <div
                 style={{
-                    padding: collapsed ? '20px 12px' : '20px 24px',
-                    borderBottom: `1px solid ${theme.colors.border.default}`,
+                    padding: collapsed ? '20px 16px' : '20px',
+                    borderBottom: '1px solid #334155',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    minHeight: '72px',
-                    backgroundColor: theme.colors.background.primary
+                    minHeight: '64px',
                 }}
             >
                 {!collapsed && (
@@ -49,26 +87,24 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
                             style={{
                                 width: '32px',
                                 height: '32px',
-                                background: theme.colors.primary.DEFAULT,
+                                background: '#3b82f6',
                                 borderRadius: '8px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                fontSize: '18px',
                             }}
                         >
-                            🦅
+                            <Zap size={18} color="#ffffff" strokeWidth={2} />
                         </div>
-                        <span
+                        <div
                             style={{
-                                fontSize: '18px',
-                                fontWeight: 800,
-                                color: theme.colors.text.primary,
-                                letterSpacing: '-0.02em',
+                                fontSize: '16px',
+                                fontWeight: 600,
+                                color: '#f8fafc',
                             }}
                         >
                             ARC-Hawk
-                        </span>
+                        </div>
                     </div>
                 )}
 
@@ -76,7 +112,7 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
                     onClick={onToggle}
                     style={{
                         background: 'transparent',
-                        border: `1px solid ${theme.colors.border.active}`,
+                        border: '1px solid #334155',
                         borderRadius: '6px',
                         width: '32px',
                         height: '32px',
@@ -84,91 +120,63 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
                         alignItems: 'center',
                         justifyContent: 'center',
                         cursor: 'pointer',
-                        color: theme.colors.text.tertiary,
-                        transition: 'all 0.2s ease',
+                        color: '#cbd5e1',
+                        transition: 'all 0.15s',
                     }}
                     onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = theme.colors.text.secondary;
-                        e.currentTarget.style.color = theme.colors.text.secondary;
+                        e.currentTarget.style.borderColor = '#475569';
                     }}
                     onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = theme.colors.border.active;
-                        e.currentTarget.style.color = theme.colors.text.tertiary;
+                        e.currentTarget.style.borderColor = '#334155';
                     }}
                 >
-                    {collapsed ? '→' : '←'}
+                    {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
                 </button>
             </div>
 
+            {/* Navigation */}
             <nav
                 style={{
                     flex: 1,
-                    padding: collapsed ? '16px 8px' : '24px 16px',
+                    padding: collapsed ? '16px 12px' : '20px 16px',
                     overflowY: 'auto',
+                    overflowX: 'hidden',
                 }}
             >
-                <div style={{ marginBottom: '32px' }}>
-                    <SectionHeader collapsed={collapsed}>Compliance Controls</SectionHeader>
-                    <NavSection
-                        icon="🛡️"
-                        label="Compliance Posture"
-                        href="/compliance"
-                        collapsed={collapsed}
-                        active={true}
-                    />
-                    <NavSection
-                        icon="🔥"
-                        label="Risk Analytics"
-                        href="/analytics"
-                        collapsed={collapsed}
-                    />
-                </div>
-
-                <div style={{ marginBottom: '32px' }}>
-                    <SectionHeader collapsed={collapsed}>Data Assets</SectionHeader>
-                    <NavSection
-                        icon="🗂️"
-                        label="Asset Inventory"
-                        href="/assets"
-                        collapsed={collapsed}
-                    />
-                    <NavSection
-                        icon="🔗"
-                        label="Lineage Map"
-                        href="/lineage"
-                        collapsed={collapsed}
-                    />
-                    <NavSection
-                        icon="🔍"
-                        label="Findings"
-                        href="/findings"
-                        collapsed={collapsed}
-                    />
-                </div>
-
-                <div style={{
-                    height: '1px',
-                    background: theme.colors.border.default,
-                    margin: collapsed ? '12px 4px' : '16px 0',
-                }} />
-
-                <div style={{ marginBottom: '24px' }}>
-                    <SectionHeader collapsed={collapsed}>System</SectionHeader>
-                    <NavSection
-                        icon="⚙️"
-                        label="Settings"
-                        href="/settings"
-                        collapsed={collapsed}
-                    />
-                </div>
+                {navItems.map((group, groupIndex) => (
+                    <div key={groupIndex} style={{ marginBottom: '24px' }}>
+                        {!collapsed && (
+                            <div
+                                style={{
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    color: '#64748b',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.05em',
+                                    marginBottom: '8px',
+                                    paddingLeft: '12px',
+                                }}
+                            >
+                                {group.section}
+                            </div>
+                        )}
+                        {group.items.map((item, itemIndex) => (
+                            <NavItem
+                                key={itemIndex}
+                                {...item}
+                                collapsed={collapsed}
+                                active={pathname === item.href}
+                            />
+                        ))}
+                    </div>
+                ))}
             </nav>
 
             {/* Footer */}
             <div
                 style={{
-                    padding: collapsed ? '12px 8px' : '16px',
-                    borderTop: `1px solid ${theme.colors.border.default}`,
-                    backgroundColor: theme.colors.background.primary
+                    padding: collapsed ? '12px' : '16px',
+                    borderTop: '1px solid #334155',
                 }}
             >
                 <a
@@ -178,64 +186,39 @@ export default function Sidebar({ children, collapsed, onToggle }: SidebarProps)
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: collapsed ? 'center' : 'center',
+                        justifyContent: collapsed ? 'center' : 'flex-start',
                         gap: '8px',
                         padding: '10px',
-                        marginBottom: '12px',
                         borderRadius: '8px',
                         textDecoration: 'none',
-                        color: theme.colors.primary.DEFAULT,
+                        color: '#60a5fa',
                         fontSize: '13px',
-                        fontWeight: 600,
-                        backgroundColor: `${theme.colors.primary.DEFAULT}15`,
-                        transition: 'background 0.2s',
+                        fontWeight: 500,
+                        background: 'rgba(59, 130, 246, 0.05)',
+                        border: '1px solid rgba(59, 130, 246, 0.1)',
+                        transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(59, 130, 246, 0.05)';
                     }}
                 >
-                    <span style={{ fontSize: '16px' }}>📚</span>
+                    <BookOpen size={14} />
                     {!collapsed && <span>DPDPA Guide</span>}
                 </a>
-                {!collapsed && (
-                    <div style={{
-                        fontSize: '12px',
-                        color: theme.colors.text.muted,
-                        textAlign: 'center',
-                    }}>
-                        v1.2.0 • DPDPA Edition
-                    </div>
-                )}
             </div>
         </aside>
     );
 }
 
-// Helper Components
-function SectionHeader({ children, collapsed }: { children: React.ReactNode; collapsed: boolean }) {
-    if (collapsed) return null;
-
-    return (
-        <div
-            style={{
-                fontSize: '11px',
-                fontWeight: 700,
-                color: theme.colors.text.muted,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                marginBottom: '12px',
-                marginTop: '4px',
-                paddingLeft: '12px'
-            }}
-        >
-            {children}
-        </div>
-    );
-}
-
-function NavSection({ icon, label, href, collapsed, active }: {
-    icon: string;
+function NavItem({ icon: Icon, label, href, collapsed, active }: {
+    icon: any;
     label: string;
     href: string;
     collapsed: boolean;
-    active?: boolean;
+    active: boolean;
 }) {
     const [isHovered, setIsHovered] = useState(false);
 
@@ -246,22 +229,22 @@ function NavSection({ icon, label, href, collapsed, active }: {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
-                padding: collapsed ? '12px 8px' : '12px 16px',
+                padding: collapsed ? '12px' : '10px 12px',
                 borderRadius: '8px',
-                color: active ? theme.colors.text.primary : theme.colors.text.secondary,
+                color: active ? '#f8fafc' : '#cbd5e1',
                 textDecoration: 'none',
                 fontSize: '14px',
-                fontWeight: active ? 700 : 500,
+                fontWeight: active ? 600 : 400,
                 marginBottom: '4px',
-                transition: 'all 0.2s ease',
-                backgroundColor: active || isHovered ? theme.colors.background.tertiary : 'transparent',
+                transition: 'all 0.15s',
+                background: active ? '#334155' : isHovered ? 'rgba(51, 65, 85, 0.5)' : 'transparent',
+                borderLeft: active ? '2px solid #3b82f6' : '2px solid transparent',
                 justifyContent: collapsed ? 'center' : 'flex-start',
-                borderLeft: active ? `3px solid ${theme.colors.primary.DEFAULT}` : '3px solid transparent'
             }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            <span style={{ fontSize: '18px' }}>{icon}</span>
+            <Icon size={18} strokeWidth={active ? 2 : 1.5} />
             {!collapsed && <span>{label}</span>}
         </a>
     );

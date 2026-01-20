@@ -10,18 +10,27 @@ Format: local@domain.tld
 """
 
 import re
+from typing import Optional
+
+# Import blacklist
+try:
+    from sdk.validators.blacklists import is_blacklisted_domain
+    BLACKLIST_AVAILABLE = True
+except ImportError:
+    BLACKLIST_AVAILABLE = False
 
 
 class EmailValidator:
-    """Validates email addresses (RFC 5322 basic format)."""
+    """
+    Validates email addresses using RFC 5322 standard.
     
-    # Simplified RFC 5322 regex (covers 99% of real emails)
+    Enhanced with domain blacklist to filter test emails.
+    """
+    
+    # Simplified RFC 5322 regex (covers most common cases)
     EMAIL_PATTERN = re.compile(
-        r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        r'^[a-zA-Z0-9.!#$%&\'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'
     )
-    
-    # Max length per RFC 5321
-    MAX_LENGTH = 254
     
     @classmethod
     def validate(cls, email: str) -> bool:
@@ -37,18 +46,10 @@ class EmailValidator:
         if not email:
             return False
         
-        # Normalize
-        email = email.strip().lower()
+        # Clean whitespace
+        email = email.strip()
         
-        # Check length
-        if len(email) > cls.MAX_LENGTH:
-            return False
-        
-        # Must have exactly one @
-        if email.count('@') != 1:
-            return False
-        
-        # Basic format check
+        # Basic format validation
         if not cls.EMAIL_PATTERN.match(email):
             return False
         
