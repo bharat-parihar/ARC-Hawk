@@ -101,7 +101,7 @@ export interface FindingWithDetails extends Finding {
 export interface Node {
     id: string;
     label: string;
-    type: string;
+    type: string | 'system' | 'asset' | 'pii_category' | 'file' | 'table';
     risk_score: number;
     metadata: Record<string, any>;
     parent_id?: string;
@@ -166,3 +166,41 @@ export interface SemanticGraph {
     edges: Edge[];
 }
 
+
+export interface RemediationAction {
+    id: string;
+    finding_id: string;
+    action_type: 'MASK' | 'DELETE' | 'ENCRYPT';
+    executed_by: string;
+    executed_at: string;
+    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'ROLLED_BACK';
+    original_value?: string;
+    error?: string;
+}
+
+export interface RemediationPreview {
+    request_id: string;
+    finding_ids: string[];
+    action_type: string;
+    impact: RemediationImpact;
+    findings: FindingPreview[];
+    requires_confirmation: boolean;
+}
+
+export interface RemediationImpact {
+    total_findings: number;
+    affected_assets: number;
+    affected_systems: number;
+    pii_types: string[];
+    estimated_records: number;
+}
+
+export interface FindingPreview {
+    finding_id: string;
+    asset_name: string;
+    asset_path: string;
+    pii_type: string;
+    field_name: string;
+    sample_before: string;
+    sample_after: string;
+}

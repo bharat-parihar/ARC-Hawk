@@ -1,49 +1,31 @@
 'use client';
 
 import React from 'react';
-import Topbar from '@/components/Topbar';
-import { theme } from '@/design-system/theme';
+import { Settings } from 'lucide-react';
 
 export default function SettingsPage() {
     return (
-        <div style={{ minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-            <Topbar
-                scanTime={new Date().toISOString()}
-                environment="Production"
-            />
+        <div className="p-8">
+            <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-slate-800 rounded-lg">
+                    <Settings className="w-6 h-6 text-slate-400" />
+                </div>
+                <div>
+                    <h1 className="text-2xl font-bold text-white">Settings</h1>
+                    <p className="text-slate-400">System configuration and preferences.</p>
+                </div>
+            </div>
 
-            <div style={{ padding: '32px', maxWidth: '800px', margin: '0 auto' }}>
-                <h1 style={{
-                    fontSize: '28px',
-                    fontWeight: 800,
-                    color: theme.colors.text.primary,
-                    marginBottom: '24px'
-                }}>
-                    Settings
-                </h1>
-
-                <div style={{
-                    backgroundColor: theme.colors.background.card,
-                    borderRadius: '12px',
-                    border: `1px solid ${theme.colors.border.default}`,
-                    padding: '32px',
-                    textAlign: 'center'
-                }}>
-                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚙️</div>
-                    <h2 style={{ fontSize: '20px', fontWeight: 600, color: theme.colors.text.primary, marginBottom: '8px' }}>
+            <div className="max-w-3xl">
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center">
+                    <div className="text-4xl mb-4">⚙️</div>
+                    <h2 className="text-xl font-bold text-white mb-2">
                         Configuration & Preferences
                     </h2>
-                    <p style={{ color: theme.colors.text.secondary, marginBottom: '24px' }}>
+                    <p className="text-slate-400 mb-6 max-w-md mx-auto">
                         System configuration options will be available here. You can configure scanner rules, user permissions, and notification settings.
                     </p>
-                    <button style={{
-                        padding: '10px 20px',
-                        backgroundColor: theme.colors.background.tertiary,
-                        color: theme.colors.text.muted,
-                        border: `1px solid ${theme.colors.border.default}`,
-                        borderRadius: '6px',
-                        cursor: 'not-allowed'
-                    }} disabled>
+                    <button className="px-4 py-2 bg-slate-800 text-slate-500 border border-slate-700 rounded-lg cursor-not-allowed text-sm font-medium">
                         Coming Soon
                     </button>
                 </div>

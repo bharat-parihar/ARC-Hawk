@@ -10,50 +10,55 @@ interface SummaryCardsProps {
 }
 
 export default function SummaryCards({
-    totalFindings = 0,
-    sensitivePIICount = 0,
-    highRiskAssets = 0,
-    criticalFindings = 0,
-}: SummaryCardsProps) {
+    totalPII = 0,
+    highRiskFindings = 0,
+    assetsHit = 0,
+    actionsRequired = 0,
+}: {
+    totalPII?: number;
+    highRiskFindings?: number;
+    assetsHit?: number;
+    actionsRequired?: number;
+}) {
     return (
         <div
             style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
                 gap: '24px',
                 marginBottom: '32px',
             }}
         >
             <Card
-                label="Total Findings"
-                value={totalFindings}
-                subtitle="Across all assets"
+                label="Total PII"
+                value={totalPII}
+                subtitle="Detections across all sources"
+                color={colors.text.primary}
+                tooltip="Total count of PII instances detected."
+            />
+
+            <Card
+                label="High Risk"
+                value={highRiskFindings}
+                subtitle="High confidence or sensitive"
+                color={colors.state.risk}
+                tooltip="Findings classified as High Risk."
+            />
+
+            <Card
+                label="Assets Hit"
+                value={assetsHit}
+                subtitle="Containing PII"
                 color={colors.nodeColors.asset}
-                tooltip="Total number of data points scanned and identified."
+                tooltip="Number of assets (tables, files, buckets) containing PII."
             />
 
             <Card
-                label="Sensitive PII"
-                value={sensitivePIICount}
-                subtitle="Requires consent & protection"
-                color={colors.state.risk}
-                tooltip="Personal Identifiable Information requiring strict compliance."
-            />
-
-            <Card
-                label="High-Risk Assets"
-                value={highRiskAssets}
-                subtitle="Risk score ≥ 70"
+                label="Actions Req"
+                value={actionsRequired}
+                subtitle="Pending review or remediation"
                 color={colors.state.warning}
-                tooltip="Assets containing high volume or high sensitivity data."
-            />
-
-            <Card
-                label="Critical Findings"
-                value={criticalFindings}
-                subtitle="Immediate attention required"
-                color={colors.state.risk}
-                tooltip="Findings with Critical severity requiring immediate remediation."
+                tooltip="Findings requiring confirmation or remediation."
             />
         </div>
     );

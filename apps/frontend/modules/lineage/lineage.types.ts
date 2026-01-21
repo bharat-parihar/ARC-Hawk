@@ -1,7 +1,7 @@
 // Lineage Graph Types - Frozen Semantic Contract: 3-Level Hierarchy
 // System → Asset → PII_Category (no intermediate DataCategory)
 
-export type NodeType = 'system' | 'asset' | 'pii_category';
+export type NodeType = 'system' | 'asset' | 'pii_category' | 'file' | 'table';
 
 export interface BaseNode {
     id: string;
@@ -39,7 +39,23 @@ export interface PIICategoryNode extends BaseNode {
     };
 }
 
-export type LineageNode = SystemNode | AssetNode | PIICategoryNode;
+export interface FileNode extends BaseNode {
+    type: 'file';
+    metadata: {
+        path?: string;
+        size?: number;
+    };
+}
+
+export interface TableNode extends BaseNode {
+    type: 'table';
+    metadata: {
+        schema?: string;
+        rows?: number;
+    };
+}
+
+export type LineageNode = SystemNode | AssetNode | PIICategoryNode | FileNode | TableNode;
 
 // Frozen Semantic Contract: Only these edge types allowed
 export interface LineageEdge {
@@ -61,12 +77,16 @@ export const NODE_COLORS: Record<NodeType, string> = {
     system: '#3b82f6',      // Blue - Infrastructure
     asset: '#10b981',       // Green - Data containers
     pii_category: '#ef4444', // Red - PII risk
+    file: '#a855f7',        // Purple - Files
+    table: '#10b981',       // Green - Tables (same as asset)
 };
 
 export const NODE_SIZES: Record<NodeType, number> = {
     system: 60,
     asset: 50,
     pii_category: 45,
+    file: 48,
+    table: 50,
 };
 
 // Risk level colors (frozen contract)

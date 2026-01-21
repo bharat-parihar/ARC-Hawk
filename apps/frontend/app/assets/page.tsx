@@ -1,11 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Topbar from '@/components/Topbar';
 import AssetTable from '@/components/AssetTable';
 import LoadingState from '@/components/LoadingState';
 import { assetsApi } from '@/services/assets.api';
-import { theme } from '@/design-system/theme';
 import { Asset } from '@/types';
 import { useRouter } from 'next/navigation';
 
@@ -37,51 +35,33 @@ export default function AssetInventoryPage() {
     };
 
     return (
-        <div style={{ minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-            <Topbar
-                scanTime={new Date().toISOString()} // Todo: fetch real scan time
-                environment="Production"
-            />
-
-            <div style={{ padding: '32px', maxWidth: '1600px', margin: '0 auto' }}>
-                <div style={{ marginBottom: '32px' }}>
-                    <h1 style={{
-                        fontSize: '32px',
-                        fontWeight: 800,
-                        color: theme.colors.text.primary,
-                        marginBottom: '8px',
-                        letterSpacing: '-0.02em',
-                    }}>
-                        Asset Inventory
-                    </h1>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{
-                            padding: '2px 8px',
-                            borderRadius: '999px',
-                            backgroundColor: theme.colors.background.tertiary,
-                            color: theme.colors.text.secondary,
-                            fontSize: '12px',
-                            fontWeight: 700
-                        }}>
-                            Total: {total}
-                        </span>
-                        <span style={{ color: theme.colors.text.muted, fontSize: '14px' }}>
-                            Canonical source of truth for all tracked data assets.
-                        </span>
-                    </div>
+        <div className="flex flex-col h-full bg-slate-950 p-8">
+            <div className="mb-8">
+                <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">
+                    Asset Inventory
+                </h1>
+                <div className="flex items-center gap-2 text-sm">
+                    <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-bold text-xs">
+                        Total: {total}
+                    </span>
+                    <span className="text-slate-500">
+                        Canonical source of truth for all tracked data assets.
+                    </span>
                 </div>
+            </div>
 
-                {loading ? (
-                    <LoadingState message="Syncing Asset Inventory..." />
-                ) : (
+            {loading ? (
+                <LoadingState message="Syncing Asset Inventory..." />
+            ) : (
+                <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
                     <AssetTable
                         assets={assets}
                         total={total}
                         loading={loading}
                         onAssetClick={handleAssetClick}
                     />
-                )}
-            </div>
+                </div>
+            )}
         </div>
     );
 }

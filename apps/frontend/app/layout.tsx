@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import AppLayout from '@/components/AppLayout';
+import { GlobalLayout } from '@/components/layout/GlobalLayout';
+import { ScanContextProvider } from '@/contexts/ScanContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -18,7 +19,9 @@ export default function RootLayout({
     return (
         <html lang="en">
             <body className={inter.className} style={{ margin: 0, padding: 0, backgroundColor: '#0f172a' }}>
-                <AppLayout>{children}</AppLayout>
+                <ScanContextProvider>
+                    <GlobalLayout>{children}</GlobalLayout>
+                </ScanContextProvider>
             </body>
         </html>
     );

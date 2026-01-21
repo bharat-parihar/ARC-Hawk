@@ -10,14 +10,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/arc-platform/backend/modules/shared/config"
 	"github.com/arc-platform/backend/modules/analytics"
 	"github.com/arc-platform/backend/modules/assets"
 	"github.com/arc-platform/backend/modules/compliance"
 	"github.com/arc-platform/backend/modules/connections"
 	"github.com/arc-platform/backend/modules/lineage"
 	"github.com/arc-platform/backend/modules/masking"
+	"github.com/arc-platform/backend/modules/remediation"
 	"github.com/arc-platform/backend/modules/scanning"
+	"github.com/arc-platform/backend/modules/scanning/worker"
+	"github.com/arc-platform/backend/modules/shared/config"
 	"github.com/arc-platform/backend/modules/shared/infrastructure/database"
 	"github.com/arc-platform/backend/modules/shared/infrastructure/persistence"
 	"github.com/arc-platform/backend/modules/shared/interfaces"
@@ -106,6 +108,7 @@ func main() {
 	registry := interfaces.NewModuleRegistry()
 
 	// Register all modules
+	// Register all modules
 	modules := []interfaces.Module{
 		scanning.NewScanningModule(),       // Scanning & Classification (combined)
 		assets.NewAssetsModule(),           // Asset Management
@@ -114,6 +117,7 @@ func main() {
 		masking.NewMaskingModule(),         // Data Masking
 		analytics.NewAnalyticsModule(),     // Analytics & Heatmaps
 		connections.NewConnectionsModule(), // Connections & Orchestration
+		remediation.NewRemediationModule(), // Remediation
 	}
 
 	for _, module := range modules {
@@ -137,6 +141,34 @@ func main() {
 	}
 
 	log.Println("\n✅ All modules initialized successfully")
+	log.Println("=" + string(make([]byte, 70)))
+
+	// Initialize Temporal Worker
+	log.Println("\n⏱️  Initializing Temporal Worker...")
+	log.Println("=" + string(make([]byte, 70)))
+
+	temporalAddress := getEnv("TEMPORAL_ADDRESS", "localhost:7233")
+	temporalWorker, err := worker.NewTemporalWorker(temporalAddress, db, neo4jRepo.GetDriver())
+	if err != nil {
+		log.Printf("⚠️  Warning: Failed to initialize Temporal worker: %v", err)
+		log.Println("⚠️  Continuing without Temporal orchestration (fallback mode)")
+		temporalWorker = nil
+	} else {
+		log.Println("✅ Temporal worker initialized")
+
+		// Start worker in background goroutine
+		go func() {
+			log.Println("🔄 Starting Temporal worker...")
+			if err := temporalWorker.Start(); err != nil {
+				log.Printf("❌ Temporal worker error: %v", err)
+			}
+		}()
+
+		// Give worker time to start
+		time.Sleep(500 * time.Millisecond)
+		log.Println("✅ Temporal worker started successfully")
+	}
+
 	log.Println("=" + string(make([]byte, 70)))
 
 	// Setup HTTP server
@@ -207,6 +239,13 @@ func main() {
 	<-quit
 
 	log.Println("\n🛑 Shutting down server...")
+
+	// Shutdown Temporal worker
+	if temporalWorker != nil {
+		log.Println("⏱️  Stopping Temporal worker...")
+		temporalWorker.Stop()
+		log.Println("✅ Temporal worker stopped")
+	}
 
 	// Shutdown all modules
 	if err := registry.ShutdownAll(); err != nil {

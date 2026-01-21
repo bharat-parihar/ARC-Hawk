@@ -7,6 +7,8 @@ import LoadingState from '@/components/LoadingState';
 import { findingsApi } from '@/services/findings.api';
 import { theme } from '@/design-system/theme';
 import type { FindingWithDetails, FindingsResponse } from '@/types';
+import { RemediationConfirmationModal } from '@/components/remediation/RemediationConfirmationModal';
+import { remediationApi } from '@/services/remediation.api';
 
 export default function FindingsPage() {
     const [findingsData, setFindingsData] = useState<FindingsResponse | null>(null);
@@ -17,10 +19,14 @@ export default function FindingsPage() {
     const [page, setPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
     const [severityFilter, setSeverityFilter] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [assetFilter, setAssetFilter] = useState('');
+    const [piiTypeFilter, setPiiTypeFilter] = useState('');
 
     useEffect(() => {
         fetchFindings();
-    }, [page, searchTerm, severityFilter]);
+    }, [page, searchTerm, severityFilter, statusFilter, assetFilter, piiTypeFilter]);
+
 
     const fetchFindings = async () => {
         try {
@@ -82,71 +88,152 @@ export default function FindingsPage() {
         setPage(1); // Reset to first page on filter change
     };
 
+    const [remediationState, setRemediationState] = useState<{
+        isOpen: boolean;
+        findingId: string | null;
+        action: 'MASK' | 'DELETE';
+    }>({
+        isOpen: false,
+        findingId: null,
+        action: 'MASK'
+    });
+
+    const handleRemediateRequest = (id: string, action: 'MASK' | 'DELETE') => {
+        setRemediationState({
+            isOpen: true,
+            findingId: id,
+            action: action
+        });
+    };
+
+
+    const handleRemediationConfirm = async (options: { createRollback: boolean; notifyOwner: boolean }) => {
+        if (!remediationState.findingId) return;
+
+        try {
+            await remediationApi.executeRemediation({
+                finding_ids: [remediationState.findingId],
+                action_type: remediationState.action,
+                user_id: 'current-user' // In real app, get from auth context
+            });
+
+            // Refresh findings
+            fetchFindings();
+            setRemediationState(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+            console.error('Remediation failed:', error);
+            setError('Failed to execute remediation');
+        }
+    };
+
+    const handleMarkFalsePositive = async (id: string) => {
+        try {
+            await findingsApi.submitFeedback(id, {
+                feedback_type: 'FALSE_POSITIVE',
+                comments: 'Marked via UI'
+            });
+            fetchFindings(); // Refresh list to see status change
+        } catch (error) {
+            console.error('Failed to mark false positive:', error);
+            setError('Failed to update finding');
+        }
+    };
+
     return (
-        <div style={{ minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
-            <Topbar
-                scanTime={new Date().toISOString()} // Ideally fetch this
-                environment="Production"
-                riskScore={0} // We can fetch this or leave 0 if not relevant here
-            />
+        <div className="flex flex-col h-full bg-slate-950">
+            {/* Header with Title and Global Actions */}
+            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-800 bg-slate-900">
+                <div>
+                    <h1 className="text-2xl font-bold text-white">Findings Explorer</h1>
+                    <p className="text-slate-400 mt-1">Detailed breakdown of PII detections and display security risks.</p>
+                </div>
+                {findingsData && findingsData.findings.length > 0 && (
+                    <button
+                        onClick={() => {
+                            const { exportToCSV } = require('@/utils/export');
+                            exportToCSV(findingsData.findings, 'findings');
+                        }}
+                        className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-300 rounded-lg hover:bg-slate-700 hover:text-white transition-colors text-sm font-medium flex items-center gap-2"
+                    >
+                        📊 Export CSV
+                    </button>
+                )}
+            </div>
 
-            <div style={{ padding: '32px', maxWidth: '1600px', margin: '0 auto' }}>
-                <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                        <h1 style={{
-                            fontSize: '28px',
-                            fontWeight: 800,
-                            color: theme.colors.text.primary,
-                            margin: 0
-                        }}>
-                            Findings Explorer
-                        </h1>
-                        <p style={{ color: theme.colors.text.secondary, marginTop: '8px' }}>
-                            Detailed list of all security findings and PII detections.
-                        </p>
-                    </div>
-
-                    {/* Export Button */}
-                    {findingsData && findingsData.findings.length > 0 && (
-                        <button
-                            onClick={() => {
-                                const { exportToCSV } = require('@/utils/export');
-                                exportToCSV(findingsData.findings, 'findings');
-                            }}
-                            style={{
-                                padding: '10px 20px',
-                                borderRadius: '8px',
-                                border: `1px solid ${theme.colors.border.default}`,
-                                backgroundColor: theme.colors.background.card,
-                                color: theme.colors.text.primary,
-                                fontWeight: 600,
-                                fontSize: '14px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = theme.colors.background.tertiary;
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = theme.colors.background.card;
-                            }}
-                        >
-                            📊 Export CSV
-                        </button>
-                    )}
+            {/* Sticky Filters Bar */}
+            <div className="sticky top-0 z-20 bg-slate-900 border-b border-slate-800 px-8 py-3 flex items-center gap-4 overflow-x-auto">
+                <div className="flex items-center gap-2 text-sm text-slate-400 font-medium whitespace-nowrap">
+                    <span className="text-slate-500">Filters:</span>
                 </div>
 
+                {/* Scan Filter (Mock) */}
+                <select className="bg-slate-800 border border-slate-700 text-slate-300 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <option>All Scans</option>
+                    <option>SCAN_021 (Latest)</option>
+                    <option>SCAN_020</option>
+                </select>
+
+                {/* PII Type Filter */}
+                <select
+                    className="bg-slate-800 border border-slate-700 text-slate-300 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={piiTypeFilter}
+                    onChange={(e) => setPiiTypeFilter(e.target.value)}
+                >
+                    <option value="">PII Type: All</option>
+                    <option value="PAN">PAN</option>
+                    <option value="Aadhaar">Aadhaar</option>
+                    <option value="Email">Email</option>
+                </select>
+
+                {/* Asset Filter */}
+                <select
+                    className="bg-slate-800 border border-slate-700 text-slate-300 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={assetFilter}
+                    onChange={(e) => setAssetFilter(e.target.value)}
+                >
+                    <option value="">Asset: All</option>
+                    <option value="DB-Prod">DB-Prod</option>
+                    <option value="S3-Logs">S3-Logs</option>
+                </select>
+
+                {/* Risk Filter */}
+                <select
+                    className="bg-slate-800 border border-slate-700 text-slate-300 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={severityFilter}
+                    onChange={(e) => setSeverityFilter(e.target.value)}
+                >
+                    <option value="">Risk: All</option>
+                    <option value="Critical">Critical</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                </select>
+
+                {/* Status Filter */}
+                <select
+                    className="bg-slate-800 border border-slate-700 text-slate-300 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                    <option value="">Status: All</option>
+                    <option value="Active">Active</option>
+                    <option value="Suppressed">Suppressed</option>
+                    <option value="Remediated">Remediated</option>
+                </select>
+
+                {/* Search */}
+                <input
+                    type="text"
+                    placeholder="Search path/field..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="ml-auto bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 w-64"
+                />
+            </div>
+
+            {/* Findings Content */}
+            <div className="flex-1 overflow-auto p-8">
                 {error && (
-                    <div style={{
-                        backgroundColor: `${theme.colors.status.error}10`,
-                        border: `1px solid ${theme.colors.status.error}40`,
-                        color: theme.colors.status.error,
-                        padding: '16px',
-                        borderRadius: '8px',
-                        marginBottom: '24px'
-                    }}>
+                    <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-lg mb-6">
                         {error}
                     </div>
                 )}
@@ -154,13 +241,7 @@ export default function FindingsPage() {
                 {loading && !findingsData ? (
                     <LoadingState message="Loading findings..." />
                 ) : (
-                    <div style={{
-                        backgroundColor: theme.colors.background.card,
-                        borderRadius: '12px',
-                        border: `1px solid ${theme.colors.border.default}`,
-                        padding: '24px',
-                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.4)'
-                    }}>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
                         {findingsData ? (
                             <FindingsTable
                                 findings={findingsData.findings}
@@ -170,6 +251,8 @@ export default function FindingsPage() {
                                 totalPages={findingsData.total_pages}
                                 onPageChange={setPage}
                                 onFilterChange={handleFilterChange}
+                                onRemediate={handleRemediateRequest}
+                                onMarkFalsePositive={handleMarkFalsePositive}
                             />
                         ) : (
                             <div className="text-center py-12 text-slate-500">
@@ -179,6 +262,14 @@ export default function FindingsPage() {
                     </div>
                 )}
             </div>
+
+            <RemediationConfirmationModal
+                isOpen={remediationState.isOpen}
+                onClose={() => setRemediationState(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={handleRemediationConfirm}
+                findingId={remediationState.findingId}
+                actionType={remediationState.action}
+            />
         </div>
     );
 }

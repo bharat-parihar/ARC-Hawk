@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* ============================================
    ARC-Hawk Minimal Design System
    Clean, Professional, Focused

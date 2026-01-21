@@ -2,13 +2,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Topbar from '@/components/Topbar';
 import FindingsTable from '@/components/FindingsTable';
 import LoadingState from '@/components/LoadingState';
 import { assetsApi } from '@/services/assets.api';
 import { findingsApi } from '@/services/findings.api';
-import { colors } from '@/design-system/colors';
 import { Asset, FindingsResponse } from '@/types';
+import { ArrowLeft, Database, User, FolderOpen, Shield, Activity, Share2, FileJson, Server } from 'lucide-react';
 
 export default function AssetDetailPage() {
     const params = useParams();
@@ -38,7 +37,6 @@ export default function AssetDetailPage() {
             ]);
 
             setAsset(assetData);
-            // @ts-ignore
             setFindingsData(findingsRes as FindingsResponse);
 
         } catch (err: any) {
@@ -50,113 +48,80 @@ export default function AssetDetailPage() {
     };
 
     if (loading) return <LoadingState fullScreen message="Loading Asset Details..." />;
+
     if (error || !asset) return (
-        <div style={{ padding: '32px', textAlign: 'center' }}>
-            <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#dc2626', marginBottom: '8px' }}>Error</h2>
-            <p style={{ color: '#475569' }}>{error || 'Asset not found'}</p>
-            <button
-                onClick={() => router.push('/')} // Back to Dashboard for now as inventory list might not utilize page router yet
-                style={{
-                    marginTop: '16px',
-                    padding: '8px 16px',
-                    backgroundColor: '#1e293b',
-                    color: 'white',
-                    borderRadius: '4px',
-                    border: 'none',
-                    cursor: 'pointer'
-                }}
-            >
-                Back to Dashboard
-            </button>
+        <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 p-8">
+            <div className="text-center max-w-md">
+                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Shield className="w-8 h-8 text-red-500" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Error Loading Asset</h2>
+                <p className="text-slate-400 mb-8">{error || 'Asset not found or access denied.'}</p>
+                <button
+                    onClick={() => router.push('/')}
+                    className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors font-medium border border-slate-700"
+                >
+                    Back to Dashboard
+                </button>
+            </div>
         </div>
     );
 
-    return (
-        <div style={{ minHeight: '100vh', backgroundColor: colors.background.primary }}>
-            <Topbar environment="Production" />
+    const getRiskColor = (score: number) => {
+        if (score >= 90) return 'text-red-500';
+        if (score >= 70) return 'text-orange-500';
+        if (score >= 40) return 'text-yellow-500';
+        return 'text-blue-500';
+    };
 
-            <div style={{ padding: '32px', maxWidth: '1600px', margin: '0 auto' }}>
+    return (
+        <div className="min-h-screen bg-slate-950 text-slate-200 font-sans">
+            <div className="max-w-7xl mx-auto p-6 md:p-8">
                 {/* Header / Breadcrumb */}
                 <button
-                    onClick={() => router.push('/')}
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        color: colors.text.secondary,
-                        marginBottom: '24px',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer'
-                    }}
+                    onClick={() => router.push('/assets')}
+                    className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 text-sm font-medium transition-colors group"
                 >
-                    ← Back to Dashboard
+                    <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                    Back to Inventory
                 </button>
 
                 {/* Asset Header Card */}
-                <div style={{
-                    backgroundColor: 'white',
-                    borderRadius: '12px',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                    border: `1px solid ${colors.border.default}`,
-                    padding: '32px',
-                    marginBottom: '32px'
-                }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                                <span style={{
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.05em',
-                                    fontSize: '12px',
-                                    fontWeight: 700,
-                                    color: colors.text.secondary,
-                                    backgroundColor: colors.background.surface,
-                                    padding: '4px 8px',
-                                    borderRadius: '4px'
-                                }}>
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-8 mb-8 shadow-xl">
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-4">
+                                <span className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-xs font-bold uppercase tracking-wider border border-slate-700">
                                     {asset.asset_type}
                                 </span>
-                                <span style={{ color: '#94a3b8', fontSize: '14px' }}>{asset.id}</span>
+                                <span className="font-mono text-xs text-slate-500">ID: {asset.id.substring(0, 8)}...</span>
                             </div>
-                            <h1 style={{ fontSize: '32px', fontWeight: 800, color: colors.text.primary, marginBottom: '12px' }}>
+
+                            <h1 className="text-3xl md:text-4xl font-extrabold text-white mb-4 tracking-tight">
                                 {asset.name}
                             </h1>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', fontSize: '14px', color: colors.text.secondary, fontWeight: 500 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>🏢 System:</span>
-                                    <span style={{ color: colors.text.primary }}>{asset.source_system}</span>
+
+                            <div className="flex flex-wrap items-center gap-6 text-sm text-slate-400 font-medium">
+                                <div className="flex items-center gap-2">
+                                    <Server className="w-4 h-4 text-slate-500" />
+                                    <span className="text-slate-300">{asset.source_system}</span>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>👤 Owner:</span>
-                                    <span style={{ color: colors.text.primary }}>{asset.owner || 'Unassigned'}</span>
+                                <div className="flex items-center gap-2">
+                                    <User className="w-4 h-4 text-slate-500" />
+                                    <span className="text-slate-300">{asset.owner || 'Unassigned'}</span>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>📍 Path:</span>
-                                    <span style={{
-                                        fontFamily: 'monospace',
-                                        backgroundColor: '#f8fafc',
-                                        padding: '2px 8px',
-                                        borderRadius: '4px',
-                                        border: '1px solid #e2e8f0',
-                                        fontSize: '12px'
-                                    }}>
+                                <div className="flex items-center gap-2">
+                                    <FolderOpen className="w-4 h-4 text-slate-500" />
+                                    <span className="font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-xs text-blue-300 truncate max-w-[300px]" title={asset.path}>
                                         {asset.path}
                                     </span>
                                 </div>
                             </div>
                         </div>
 
-                        <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '14px', color: colors.text.secondary, marginBottom: '4px', fontWeight: 600 }}>Risk Score</div>
-                            <div style={{
-                                fontSize: '48px',
-                                fontWeight: 900,
-                                lineHeight: 1,
-                                color: asset.risk_score >= 90 ? '#dc2626' : asset.risk_score >= 70 ? '#f97316' : '#334155'
-                            }}>
+                        <div className="flex flex-col items-end">
+                            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Risk Score</div>
+                            <div className={`text-5xl font-black ${getRiskColor(asset.risk_score)}`}>
                                 {asset.risk_score}
                             </div>
                         </div>
@@ -164,104 +129,99 @@ export default function AssetDetailPage() {
                 </div>
 
                 {/* Tabs */}
-                <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: `1px solid ${colors.border.default}` }}>
+                <div className="flex items-center gap-1 mb-6 border-b border-slate-800">
                     <TabButton
                         active={activeTab === 'findings'}
                         onClick={() => setActiveTab('findings')}
                         label={`Findings (${asset.total_findings})`}
+                        icon={<Shield className="w-4 h-4" />}
                     />
                     <TabButton
                         active={activeTab === 'lineage'}
                         onClick={() => setActiveTab('lineage')}
                         label="Lineage Graph"
+                        icon={<Share2 className="w-4 h-4" />}
                     />
                     <TabButton
                         active={activeTab === 'metadata'}
                         onClick={() => setActiveTab('metadata')}
                         label="Metadata"
+                        icon={<FileJson className="w-4 h-4" />}
                     />
                 </div>
 
-                {/* Content */}
-                <div style={{
-                    backgroundColor: 'white',
-                    borderRadius: '12px',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                    border: `1px solid ${colors.border.default}`,
-                    padding: '24px',
-                    minHeight: '400px'
-                }}>
+                {/* Content Area */}
+                <div className="bg-slate-900 rounded-xl border border-slate-800 min-h-[400px] shadow-sm">
                     {activeTab === 'findings' && (
                         findingsData ? (
-                            <FindingsTable
-                                findings={findingsData.findings}
-                                total={findingsData.total}
-                                page={1}
-                                pageSize={50}
-                                totalPages={1}
-                                onPageChange={() => { }}
-                                onFilterChange={() => { }}
-                            />
+                            <div className="p-4">
+                                <FindingsTable
+                                    findings={findingsData.findings}
+                                    total={findingsData.total}
+                                    page={1}
+                                    pageSize={50}
+                                    totalPages={1}
+                                    onPageChange={() => { }}
+                                    onFilterChange={() => { }}
+                                />
+                            </div>
                         ) : (
-                            <div style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>No findings loaded.</div>
+                            <div className="flex flex-col items-center justify-center py-24 text-slate-500">
+                                <Shield className="w-12 h-12 mb-4 opacity-20" />
+                                <p>No findings loaded.</p>
+                            </div>
                         )
                     )}
 
                     {activeTab === 'lineage' && (
-                        <div style={{ textAlign: 'center', padding: '48px' }}>
-                            <p style={{ color: colors.text.secondary, marginBottom: '16px' }}>Visualize how data flows into and out of this asset.</p>
+                        <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
+                            <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-6">
+                                <Share2 className="w-8 h-8 text-blue-500" />
+                            </div>
+                            <h3 className="text-xl font-semibold text-white mb-2">Visual Lineage</h3>
+                            <p className="text-slate-400 max-w-md mb-8">
+                                Trace data flow, understand dependencies, and visualize impact analysis for {asset.name}.
+                            </p>
                             <button
                                 onClick={() => router.push(`/lineage?assetId=${asset.id}`)}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '12px 24px',
-                                    backgroundColor: '#2563eb',
-                                    color: 'white',
-                                    borderRadius: '8px',
-                                    fontWeight: 600,
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
-                                }}
+                                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-lg shadow-blue-900/20"
                             >
-                                🔗 Open Lineage Graph
+                                <Activity className="w-4 h-4" />
+                                Open Lineage Graph
                             </button>
                         </div>
                     )}
 
                     {activeTab === 'metadata' && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
+                        <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-12">
                             <div>
-                                <h3 style={{ fontWeight: 700, color: colors.text.primary, marginBottom: '16px' }}>Technical Metadata</h3>
-                                <pre style={{
-                                    backgroundColor: '#f8fafc',
-                                    padding: '16px',
-                                    borderRadius: '8px',
-                                    fontSize: '12px',
-                                    overflow: 'auto',
-                                    border: '1px solid #e2e8f0',
-                                    color: '#334155'
-                                }}>
-                                    {JSON.stringify(asset.file_metadata || {}, null, 2)}
-                                </pre>
+                                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                    <Database className="w-5 h-5 text-purple-400" />
+                                    Technical Metadata
+                                </h3>
+                                <div className="bg-slate-950 rounded-lg border border-slate-800 p-4 font-mono text-xs text-slate-300 overflow-auto max-h-[500px]">
+                                    <pre>{JSON.stringify(asset.file_metadata || {}, null, 2)}</pre>
+                                </div>
                             </div>
                             <div>
-                                <h3 style={{ fontWeight: 700, color: colors.text.primary, marginBottom: '16px' }}>System Info</h3>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
-                                        <span style={{ color: '#64748b' }}>Host</span>
-                                        <span style={{ fontFamily: 'monospace', color: '#0f172a' }}>{asset.host}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
-                                        <span style={{ color: '#64748b' }}>Last Scanned</span>
-                                        <span style={{ fontFamily: 'monospace', color: '#0f172a' }}>{new Date(asset.updated_at).toLocaleString()}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
-                                        <span style={{ color: '#64748b' }}>Environment</span>
-                                        <span style={{ fontWeight: 500, color: '#2563eb', backgroundColor: '#eff6ff', padding: '2px 8px', borderRadius: '4px' }}>{asset.environment}</span>
-                                    </div>
+                                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                    <Server className="w-5 h-5 text-green-400" />
+                                    System Information
+                                </h3>
+                                <div className="space-y-4">
+                                    <InfoRow label="Host" value={asset.host} />
+                                    <InfoRow label="Last Scanned" value={new Date(asset.updated_at).toLocaleString()} />
+                                    <InfoRow
+                                        label="Environment"
+                                        value={
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${asset.environment === 'Production' ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'
+                                                }`}>
+                                                {asset.environment}
+                                            </span>
+                                        }
+                                    />
+                                    {/* Removing zone which caused error, fallback if needed or use optional chaining safely if type updated */}
+                                    {/* <InfoRow label="Zone" value={asset.zone || 'Default'} /> */}
                                 </div>
                             </div>
                         </div>
@@ -272,25 +232,29 @@ export default function AssetDetailPage() {
     );
 }
 
-function TabButton({ active, onClick, label }: { active: boolean, onClick: () => void, label: string }) {
+function TabButton({ active, onClick, label, icon }: { active: boolean, onClick: () => void, label: string, icon: React.ReactNode }) {
     return (
         <button
             onClick={onClick}
-            style={{
-                padding: '12px 24px',
-                fontSize: '14px',
-                fontWeight: 700,
-                borderBottom: active ? '2px solid #2563eb' : '2px solid transparent',
-                color: active ? '#2563eb' : '#64748b',
-                background: 'none',
-                borderTop: 'none',
-                borderLeft: 'none',
-                borderRight: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-            }}
+            className={`
+                flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all relative
+                ${active
+                    ? 'text-white border-b-2 border-blue-500 bg-slate-800/50 rounded-t-lg'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                }
+            `}
         >
+            {icon}
             {label}
         </button>
+    );
+}
+
+function InfoRow({ label, value }: { label: string, value: React.ReactNode }) {
+    return (
+        <div className="flex items-center justify-between py-3 border-b border-slate-800 last:border-0">
+            <span className="text-slate-500 font-medium text-sm">{label}</span>
+            <span className="text-slate-200 font-mono text-sm">{value}</span>
+        </div>
     );
 }

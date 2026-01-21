@@ -39,24 +39,33 @@ type Neo4jRepository struct {
 	driver neo4j.DriverWithContext
 }
 
-// NewNeo4jRepository creates a new Neo4j repository instance
+// NewNeo4jRepository creates a new Neo4j repository
 func NewNeo4jRepository(uri, username, password string) (*Neo4jRepository, error) {
 	driver, err := neo4j.NewDriverWithContext(
 		uri,
 		neo4j.BasicAuth(username, password, ""),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create neo4j driver: %w", err)
+		return nil, fmt.Errorf("failed to create Neo4j driver: %w", err)
 	}
 
 	// Verify connectivity
 	ctx := context.Background()
 	err = driver.VerifyConnectivity(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to verify neo4j connectivity: %w", err)
+		driver.Close(ctx)
+		return nil, fmt.Errorf("failed to verify Neo4j connectivity: %w", err)
 	}
 
-	return &Neo4jRepository{driver: driver}, nil
+	return &Neo4jRepository{
+		driver: driver,
+	}, nil
+}
+
+// GetDriver returns the underlying Neo4j driver
+// This is used by Temporal worker to access the driver
+func (r *Neo4jRepository) GetDriver() neo4j.DriverWithContext {
+	return r.driver
 }
 
 // Close closes the Neo4j driver

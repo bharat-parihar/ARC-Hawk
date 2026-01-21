@@ -1,48 +1,49 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Asset } from '@/types';
-import { theme } from '@/design-system/theme';
+import { AlertTriangle, Database, FileCode, Server } from 'lucide-react';
 
 interface AssetTableProps {
     assets: Asset[];
-    total: number; // For pagination later
+    total: number;
     loading?: boolean;
     onAssetClick: (id: string) => void;
 }
 
 export default function AssetTable({ assets, loading, onAssetClick }: AssetTableProps) {
-    // Hover state tracking could be implemented, or simple CSS if style tag used. 
-    // For simplicity, using inline styles with individual row state logic is unexpected in simple map.
-    // Instead we can use a helper component for Row.
-
     if (loading) {
-        return <div style={{ padding: 32, textAlign: 'center', color: theme.colors.text.muted }}>Loading assets...</div>;
+        return (
+            <div className="p-8 text-center text-slate-400 flex flex-col items-center">
+                <div className="animate-pulse w-12 h-12 bg-slate-800 rounded-full mb-4"></div>
+                Loading assets...
+            </div>
+        );
     }
 
     if (assets.length === 0) {
         return (
-            <div style={{ padding: 48, textAlign: 'center', border: `1px dashed ${theme.colors.border.default}`, borderRadius: 8 }}>
-                <div style={{ fontSize: 40, marginBottom: 16 }}>📦</div>
-                <h3 style={{ fontSize: 18, fontWeight: 600, color: theme.colors.text.primary, marginBottom: 8 }}>No Assets Found</h3>
-                <p style={{ color: theme.colors.text.secondary }}>Run a scan or adjust filters to see assets.</p>
+            <div className="p-12 text-center border-2 border-dashed border-slate-800 rounded-xl">
+                <div className="text-4xl mb-4 opacity-50">📦</div>
+                <h3 className="text-lg font-semibold text-white mb-2">No Assets Found</h3>
+                <p className="text-slate-400">Run a scan or adjust filters to see assets.</p>
             </div>
         );
     }
 
     return (
-        <div style={{ overflowX: 'auto', background: theme.colors.background.card, borderRadius: 12, border: `1px solid ${theme.colors.border.default}`, boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.4)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+        <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
                 <thead>
-                    <tr style={{ borderBottom: `1px solid ${theme.colors.border.default}` }}>
-                        <th style={{ padding: 16, textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>Asset Name</th>
-                        <th style={{ padding: 16, textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>Type</th>
-                        <th style={{ padding: 16, textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>Risk Score</th>
-                        <th style={{ padding: 16, textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>System</th>
-                        <th style={{ padding: 16, textAlign: 'left', color: theme.colors.text.muted, fontWeight: 600 }}>Findings</th>
+                    <tr className="bg-slate-800/50 text-slate-400 border-b border-slate-700">
+                        <th className="px-6 py-4 font-medium">Asset Name</th>
+                        <th className="px-6 py-4 font-medium">Type</th>
+                        <th className="px-6 py-4 font-medium">Risk Score</th>
+                        <th className="px-6 py-4 font-medium">System</th>
+                        <th className="px-6 py-4 font-medium">Findings</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-800">
                     {assets.map((asset) => (
                         <AssetRow key={asset.id} asset={asset} onClick={() => onAssetClick(asset.id)} />
                     ))}
@@ -53,78 +54,73 @@ export default function AssetTable({ assets, loading, onAssetClick }: AssetTable
 }
 
 function AssetRow({ asset, onClick }: { asset: Asset; onClick: () => void }) {
-    const [isHovered, setIsHovered] = useState(false);
-
     return (
         <tr
             onClick={onClick}
-            style={{
-                cursor: 'pointer',
-                borderBottom: `1px solid ${theme.colors.border.subtle}`,
-                backgroundColor: isHovered ? theme.colors.background.secondary : 'transparent',
-                transition: 'background-color 0.2s'
-            }}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
+            className="group hover:bg-slate-800/30 cursor-pointer transition-colors"
         >
-            <td style={{ padding: 16 }}>
-                <div style={{ fontWeight: 600, color: theme.colors.text.primary }}>{asset.name}</div>
-                <div style={{ fontSize: 13, color: theme.colors.text.muted, marginTop: 2, fontFamily: 'monospace', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }} title={asset.path}>
+            <td className="px-6 py-4">
+                <div className="font-semibold text-slate-200 group-hover:text-blue-400 transition-colors">
+                    {asset.name}
+                </div>
+                <div
+                    className="text-xs text-slate-500 mt-1 font-mono truncate max-w-[300px]"
+                    title={asset.path}
+                >
                     {asset.path}
                 </div>
             </td>
-            <td style={{ padding: 16 }}>
-                <span style={{
-                    display: 'inline-flex', alignItems: 'center', padding: '2px 10px',
-                    borderRadius: 999, fontSize: 12, fontWeight: 500,
-                    backgroundColor: theme.colors.background.tertiary,
-                    color: theme.colors.text.secondary,
-                    border: `1px solid ${theme.colors.border.default}`
-                }}>
-                    {asset.asset_type}
-                </span>
+            <td className="px-6 py-4">
+                <TypeBadge type={asset.asset_type} />
             </td>
-            <td style={{ padding: 16 }}>
+            <td className="px-6 py-4">
                 <RiskBadge score={asset.risk_score} />
             </td>
-            <td style={{ padding: 16, fontSize: 14, color: theme.colors.text.secondary }}>
-                {asset.source_system}
+            <td className="px-6 py-4 text-slate-400">
+                <div className="flex items-center gap-2">
+                    <Server className="w-4 h-4 text-slate-600" />
+                    {asset.source_system}
+                </div>
             </td>
-            <td style={{ padding: 16 }}>
+            <td className="px-6 py-4">
                 {asset.total_findings > 0 ? (
-                    <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '4px 12px', borderRadius: 6, fontSize: 13, fontWeight: 500,
-                        backgroundColor: `${theme.colors.risk.critical}15`,
-                        color: theme.colors.risk.critical
-                    }}>
-                        ⚠️ {asset.total_findings}
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-500/10 text-red-400 border border-red-500/20 text-xs font-semibold">
+                        <AlertTriangle className="w-3 h-3" />
+                        {asset.total_findings}
                     </span>
                 ) : (
-                    <span style={{ color: theme.colors.text.muted, fontSize: 13 }}>Safe</span>
+                    <span className="text-slate-500 text-xs flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-500/50" />
+                        Safe
+                    </span>
                 )}
             </td>
         </tr>
     );
 }
 
-function RiskBadge({ score }: { score: number }) {
-    const getStyle = (s: number) => {
-        if (s >= 90) return { bg: `${theme.colors.risk.critical}15`, text: theme.colors.risk.critical, border: `${theme.colors.risk.critical}40` };
-        if (s >= 70) return { bg: `${theme.colors.risk.high}15`, text: theme.colors.risk.high, border: `${theme.colors.risk.high}40` };
-        if (s >= 40) return { bg: `${theme.colors.risk.medium}15`, text: theme.colors.risk.medium, border: `${theme.colors.risk.medium}40` };
-        return { bg: theme.colors.background.tertiary, text: theme.colors.text.muted, border: theme.colors.border.default };
-    };
-
-    const style = getStyle(score);
+function TypeBadge({ type }: { type: string }) {
+    let icon = <FileCode className="w-3 h-3" />;
+    if (type === 'Table') icon = <Database className="w-3 h-3" />;
 
     return (
-        <span style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            padding: '2px 8px', borderRadius: 4, border: `1px solid ${style.border}`,
-            fontSize: 12, fontWeight: 700,
-            backgroundColor: style.bg, color: style.text
-        }}>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+            {icon}
+            {type}
+        </span>
+    );
+}
+
+function RiskBadge({ score }: { score: number }) {
+    let colorClass = "bg-slate-800 text-slate-400 border-slate-700";
+
+    if (score >= 90) colorClass = "bg-red-500/10 text-red-500 border-red-500/20";
+    else if (score >= 70) colorClass = "bg-orange-500/10 text-orange-500 border-orange-500/20";
+    else if (score >= 40) colorClass = "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
+    else colorClass = "bg-blue-500/10 text-blue-500 border-blue-500/20";
+
+    return (
+        <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded border text-xs font-bold ${colorClass}`}>
             {score}
         </span>
     );

@@ -36,7 +36,7 @@ type SemanticEdge struct {
 	ID       string                 `json:"id"`
 	Source   string                 `json:"source"`
 	Target   string                 `json:"target"`
-	Type     string                 `json:"type"` // SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
+	Type     string                 `json:"type"` // SYSTEM_OWNS_ASSET, EXPOSES
 	Metadata map[string]interface{} `json:"metadata"`
 }
 
@@ -198,9 +198,9 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 			return fmt.Errorf("failed to create PII category node: %w", err)
 		}
 
-		// Create ASSET_CONTAINS_PII relationship (Frozen Semantic Contract)
-		if err := s.neo4jRepo.CreateHierarchyRelationship(ctx, asset.ID.String(), piiType, "ASSET_CONTAINS_PII"); err != nil {
-			fmt.Printf("❌ [SYNC] Failed to create ASSET_CONTAINS_PII relationship: %s → %s - %v\n",
+		// Create EXPOSES relationship with temporal properties (Immutable Lineage)
+		if err := s.neo4jRepo.CreateTemporalExposesRelationship(ctx, asset.ID.String(), piiType, agg.FindingCount, avgConfidence); err != nil {
+			fmt.Printf("❌ [SYNC] Failed to create EXPOSES relationship: %s → %s - %v\n",
 				asset.ID, piiType, err)
 			return fmt.Errorf("failed to create asset-pii relationship: %w", err)
 		}
@@ -214,7 +214,7 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 	fmt.Printf("   - System node: %s\n", systemID)
 	fmt.Printf("   - Asset node: %s\n", asset.ID)
 	fmt.Printf("   - PII_Category nodes: %d\n", piiNodesCreated)
-	fmt.Printf("   - Total relationships: %d (1 SYSTEM_OWNS_ASSET + %d ASSET_CONTAINS_PII)\n",
+	fmt.Printf("   - Total relationships: %d (1 SYSTEM_OWNS_ASSET + %d EXPOSES)\n",
 		1+piiNodesCreated, piiNodesCreated)
 
 	return nil

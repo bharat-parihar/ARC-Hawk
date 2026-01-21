@@ -13,6 +13,10 @@ export const scansApi = {
         return await post<IngestResult>('/scans/ingest', scanData);
     },
 
+    triggerScan: async (config: any): Promise<any> => {
+        return await post<any>('/scans/trigger', config);
+    },
+
     /**
      * Get the last scan run details
      */
