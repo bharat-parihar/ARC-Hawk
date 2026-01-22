@@ -1,120 +1,56 @@
-# ARC Hawk Platform - User Manual 🦅
+# ARC-Hawk User Manual 🦅
 
-ARC Hawk is a unified data security and lineage platform designed to scan, classify, and visualize sensitive data across your infrastructure.
-
-## 📂 Repository Structure
-
-The project follows a modern monorepo architecture:
-
-- `apps/`: Core applications.
-  - `backend/`: Go-based API server (Gin framework).
-  - `frontend/`: Next.js dashboard with Enterprise Dark Mode.
-  - `scanner/`: Configuration and test data for the Hawk Scanner.
-- `scripts/`: Automation and utility scripts.
-  - `automation/unified-scan.py`: One-click scanning and ingestion tool.
-- `infra/`: Infrastructure as Code (Docker, K8s, Terraform).
-- `docs/`: Deployment guides, architecture diagrams, and this manual.
-
----
+## Introduction
+ARC-Hawk is your command center for Data Privacy. It allows you to scan, visualize, and secure sensitive data across your organization.
 
 ## 🚀 Getting Started
 
-### Prerequisites
-- **Go**: 1.19+
-- **Node.js**: 18+ (TS)
-- **Python**: 3.9+ (For automation)
-- **Docker**: For PostgreSQL database (optional if running locally).
-- **Hawk Scanner**: CLI tool installed and in PATH (`hawk_scanner`).
-
-### 1. Database Setup
-Ensure you have a PostgreSQL database running.
-- **Docker**: `docker-compose up -d db` (from `infra/docker/`).
-- **Local**: Ensure `postgres` user/password matches `apps/backend/internal/config` or set environment variables.
-
-### 2. Backend Setup
-Navigate to `apps/backend`:
-```bash
-cd apps/backend
-go mod download
-```
-
-**Running the Server:**
-You can run the server with default settings or explicit environment variables:
-```bash
-# Default (expects localhost:5432, user:postgres, pass:password)
-go run cmd/server/main.go
-
-# Custom Credentials
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_USER=myuser
-export DB_PASSWORD=mypass
-go run cmd/server/main.go
-```
-*The server listens on `http://localhost:8080`.*
-
-### 3. Frontend Setup
-Navigate to `apps/frontend`:
-```bash
-cd apps/frontend
-npm install
-npm run dev
-```
-*The dashboard is available at `http://localhost:3000`.*
+1.  **Access Dashboard**: Open `http://localhost:3000`.
+2.  **Check Status**: Ensure all System Health indicators are Green on the Compliance page.
 
 ---
 
-## 🔍 Running Scans
+## 🖥️ Dashboard Features
 
-### Configuration
-Edit `apps/scanner/config/connection.yml` to define your data sources (PostgreSQL, S3, Filesystem, Slack, etc.).
+### 1. Risk Summary
+The homepage provides a high-level view of your risk posture:
+- **Total Findings**: Count of unaddressed PII instances.
+- **Critical Assets**: Files/Tables with High Severity PII.
+- **Scan Status**: Live progress of active scans.
 
-### Automated Scanning
-We provide a unified script to run the scanner and ingest results into the backend automatically.
+### 2. Findings Explorer
+A detailed grid view of all detected PII.
+- **Filters**: Filter by Status (Active/Remediated), Asset, Risk Level.
+- **Actions**:
+    - **Mark False Positive**: If the detection is incorrect.
+    - **Remediate**: Launch a Masking/Deletion job.
 
-```bash
-python3 scripts/automation/unified-scan.py
-```
+### 3. Lineage Graph
+Visual map of data flow.
+- **Nodes**: Blue (System), Green (Asset), Red (PII).
+- **Interactions**: Click on nodes to see detailed metadata.
 
-This script will:
-1. Parse `connection.yml` from `apps/scanner/config/`.
-2. Execute `hawk_scanner` for each configured source.
-3. Post the JSON results to the Backend API.
-4. Clean up temporary output files.
-
----
-
-## 📊 Dashboard Features
-
-### Enterprise Dark Mode
-The UI features a high-contrast dark theme (`Dark Slate #0f172a`) with light components for maximum visibility.
-
-### Data Lineage Graph
-The interactive graph visualizes the flow of data:
-- **Red/Orange Nodes**: Findings (PII/Secrets).
-- **Green/Blue Nodes**: Safe Assets.
-- **Rich Cards**: Nodes display Type (Email, PAN), Risk Score, and Icons.
-- **Layout**: Intelligent Left-to-Right layout avoids overlaps.
-
-### Filtering
-Use the global search bar or distinct table filters to verify compliance across thousands of assets.
+### 4. Remediation Center
+Track the status of fix requests.
+- **History**: See who remediated what and when.
+- **Retry**: Re-run failed remediation jobs.
 
 ---
 
-## 🛠️ Troubleshooting
+## ⚙️ Configuration
 
-### 1. Backend: "password authentication failed"
-- **Cause**: The backend cannot connect to your local PostgreSQL.
-- **Fix**: Check `DB_PASSWORD` env var. If using Docker, default is usually `password`. If using generic local Postgres, it might be empty or different.
+### Adding Data Sources
+1.  Click **"Add Source"** in the top-right.
+2.  Select Type (S3, Postgres, GCS, etc.).
+3.  Enter Credentials.
+4.  Click **"Test Connection"** before saving.
 
-### 2. Scanner: "Non-PII" Classification
-- **Cause**: Older versions of the backend handled pattern matching case-sensitively.
-- **Fix**: **Restart the backend**. (Fixed in `ingestion_service.go` by normalizing input to lowercase).
+### Managing Scans
+- **Ad-hoc Scan**: Trigger manually from the Asset details page.
+- **Scheduled Scan**: Configure via the Backend API (Cron support coming soon).
 
-### 3. Automation: "Connection refused"
-- **Cause**: The backend is not running on port 8080.
-- **Fix**: Start the backend in a separate terminal window before running the script.
+---
 
-### 4. Frontend: "Module Found Error"
-- **Cause**: Corrupted Next.js cache.
-- **Fix**: Run `rm -rf .next && npm run dev`.
+## 🆘 Support
+
+For issues, please refer to the [Troubleshooting Guide](FAILURE_MODES.md) or contact your administrator.

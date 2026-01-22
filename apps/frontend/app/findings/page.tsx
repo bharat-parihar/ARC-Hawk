@@ -38,7 +38,11 @@ export default function FindingsPage() {
             const result = await findingsApi.getFindings({
                 page,
                 page_size: 20,
-                severity: severityFilter
+                severity: severityFilter || undefined,
+                status: statusFilter || undefined,
+                asset: assetFilter || undefined,
+                pii_type: piiTypeFilter || undefined,
+                search: searchTerm || undefined
             });
 
             // Explode findings: One row per match

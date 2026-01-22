@@ -7,17 +7,22 @@ import (
 	"math"
 	"strings"
 
+	"github.com/arc-platform/backend/modules/lineage/service"
 	"github.com/arc-platform/backend/modules/shared/infrastructure/persistence"
 )
 
 // EnrichmentService adds contextual intelligence to raw findings before classification
 type EnrichmentService struct {
-	repo *persistence.PostgresRepository
+	repo           *persistence.PostgresRepository
+	lineageService *service.SemanticLineageService
 }
 
 // NewEnrichmentService creates a new enrichment service
-func NewEnrichmentService(repo *persistence.PostgresRepository) *EnrichmentService {
-	return &EnrichmentService{repo: repo}
+func NewEnrichmentService(repo *persistence.PostgresRepository, lineageService *service.SemanticLineageService) *EnrichmentService {
+	return &EnrichmentService{
+		repo:           repo,
+		lineageService: lineageService,
+	}
 }
 
 // EnrichmentSignals contains contextual intelligence about a finding

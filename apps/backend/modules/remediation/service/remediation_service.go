@@ -5,27 +5,37 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/arc-platform/backend/modules/remediation/connectors"
+	"github.com/arc-platform/backend/modules/shared/interfaces"
 	"github.com/google/uuid"
-	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 // RemediationService handles remediation operations
 type RemediationService struct {
 	db               *sql.DB
-	neo4j            neo4j.DriverWithContext
+	lineageSync      interfaces.LineageSync
 	connectorFactory *connectors.ConnectorFactory
 }
 
 // NewRemediationService creates a new remediation service
-func NewRemediationService(db *sql.DB, neo4jDriver neo4j.DriverWithContext) *RemediationService {
+func NewRemediationService(db *sql.DB, lineageSync interfaces.LineageSync) *RemediationService {
+	if lineageSync == nil {
+		lineageSync = &interfaces.NoOpLineageSync{}
+	}
 	return &RemediationService{
 		db:               db,
-		neo4j:            neo4jDriver,
+		lineageSync:      lineageSync,
 		connectorFactory: &connectors.ConnectorFactory{},
 	}
+}
+
+// GetDB returns the database connection
+func (s *RemediationService) GetDB() *sql.DB {
+	return s.db
 }
 
 // Finding represents a PII finding
@@ -117,7 +127,18 @@ func (s *RemediationService) ExecuteRemediation(ctx context.Context, findingID s
 		return "", fmt.Errorf("failed to update status: %w", err)
 	}
 
-	// 10. Record audit log
+	// 10. Sync asset to lineage graph (data has changed)
+	if s.lineageSync.IsAvailable() {
+		assetUUID, parseErr := uuid.Parse(finding.AssetID)
+		if parseErr == nil {
+			if err := s.lineageSync.SyncAssetToNeo4j(ctx, assetUUID); err != nil {
+				// Log but don't fail remediation
+				log.Printf("WARNING: Failed to sync asset to lineage after remediation: %v", err)
+			}
+		}
+	}
+
+	// 11. Record audit log
 	s.recordAuditLog(ctx, "REMEDIATION_EXECUTED", userID, "remediation_action", actionID, map[string]interface{}{
 		"finding_id":  findingID,
 		"action_type": actionType,
@@ -394,6 +415,158 @@ type RemediationAction struct {
 	ExecutedAt    time.Time
 	Status        string
 	OriginalValue string
+}
+
+func (s *RemediationService) GetRemediationActions(ctx context.Context, findingID string) ([]*RemediationAction, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, finding_id, action_type, executed_by, executed_at, status
+		FROM remediation_actions
+		WHERE finding_id = $1
+		ORDER BY executed_at DESC
+	`, findingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var actions []*RemediationAction
+	for rows.Next() {
+		var action RemediationAction
+		err := rows.Scan(&action.ID, &action.FindingID, &action.ActionType, &action.ExecutedBy, &action.ExecutedAt, &action.Status)
+		if err != nil {
+			return nil, err
+		}
+		actions = append(actions, &action)
+	}
+
+	return actions, nil
+}
+
+// GetAllRemediationActions retrieves all remediation actions with pagination and filtering
+func (s *RemediationService) GetAllRemediationActions(ctx context.Context, limit, offset int, actionFilter string) ([]*RemediationAction, int, error) {
+	// Build base query
+	query := `
+		SELECT id, finding_id, action_type, executed_by, executed_at, status
+		FROM remediation_actions
+		WHERE 1=1
+	`
+	countQuery := `SELECT COUNT(*) FROM remediation_actions WHERE 1=1`
+
+	args := []interface{}{}
+	argCount := 1
+
+	// Add filter
+	if actionFilter != "" && actionFilter != "ALL" {
+		filterClause := fmt.Sprintf(" AND action_type = $%d", argCount)
+		query += filterClause
+		countQuery += filterClause
+		args = append(args, actionFilter)
+		argCount++
+	}
+
+	// Add ordering and pagination
+	query += fmt.Sprintf(" ORDER BY executed_at DESC LIMIT $%d OFFSET $%d", argCount, argCount+1)
+	args = append(args, limit, offset)
+
+	// Execute count query
+	var total int
+	// For count we only need the filter args, not limit/offset
+	countArgs := args[:len(args)-2]
+	err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count remediation actions: %w", err)
+	}
+
+	// Execute data query
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list remediation actions: %w", err)
+	}
+	defer rows.Close()
+
+	var actions []*RemediationAction
+	for rows.Next() {
+		var action RemediationAction
+		err := rows.Scan(
+			&action.ID, &action.FindingID, &action.ActionType,
+			&action.ExecutedBy, &action.ExecutedAt, &action.Status,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		actions = append(actions, &action)
+	}
+
+	return actions, total, nil
+}
+
+func (s *RemediationService) GetRemediationHistory(ctx context.Context, assetID string) ([]*RemediationAction, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT ra.id, ra.finding_id, ra.action_type, ra.executed_by, ra.executed_at, ra.status
+		FROM remediation_actions ra
+		JOIN findings f ON ra.finding_id = f.id::text
+		WHERE f.asset_id = $1
+		ORDER BY ra.executed_at DESC
+	`, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var actions []*RemediationAction
+	for rows.Next() {
+		var action RemediationAction
+		err := rows.Scan(&action.ID, &action.FindingID, &action.ActionType, &action.ExecutedBy, &action.ExecutedAt, &action.Status)
+		if err != nil {
+			return nil, err
+		}
+		actions = append(actions, &action)
+	}
+
+	return actions, nil
+}
+
+func (s *RemediationService) GetPIIPreview(ctx context.Context, findingID string) (map[string]interface{}, error) {
+	var finding struct {
+		SampleText string
+		PIIType    string
+	}
+	err := s.db.QueryRowContext(ctx, `
+		SELECT sample_text, pii_type
+		FROM findings
+		WHERE id = $1
+	`, findingID).Scan(&finding.SampleText, &finding.PIIType)
+	if err != nil {
+		return nil, err
+	}
+
+	// Simple masking for preview
+	maskedText := s.maskText(finding.SampleText, finding.PIIType)
+
+	return map[string]interface{}{
+		"finding_id":    findingID,
+		"original_text": finding.SampleText,
+		"masked_text":   maskedText,
+		"pii_type":      finding.PIIType,
+	}, nil
+}
+
+func (s *RemediationService) maskText(text, piiType string) string {
+	// Simple masking logic
+	switch piiType {
+	case "EMAIL":
+		return strings.ReplaceAll(text, "@", "[AT]")
+	case "PHONE":
+		return strings.Repeat("*", len(text))
+	case "CREDIT_CARD":
+		if len(text) > 4 {
+			return strings.Repeat("*", len(text)-4) + text[len(text)-4:]
+		}
+		return strings.Repeat("*", len(text))
+	default:
+		return strings.Repeat("*", len(text))
+	}
 }
 
 func (s *RemediationService) GetRemediationAction(ctx context.Context, actionID string) (*RemediationAction, error) {

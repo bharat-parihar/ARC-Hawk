@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Play, Zap, Clock } from 'lucide-react';
 import { scansApi } from '@/services/scans.api';
+import { connectionsApi, type Connection } from '@/services/connections.api';
 
 interface ScanConfigModalProps {
     isOpen: boolean;
@@ -31,17 +32,37 @@ const PII_TYPES = [
     { id: 'GST', label: 'GST Number', category: 'Business' },
 ];
 
-const MOCK_SOURCES = [
-    { id: 'db-prod', name: 'DB-Prod', type: 'PostgreSQL' },
-    { id: 's3-logs', name: 'S3-Logs', type: 'S3' },
-    { id: 'fs-backup', name: 'FS-Backup', type: 'Filesystem' },
-];
-
 export function ScanConfigModal({ isOpen, onClose, onRunScan }: ScanConfigModalProps) {
     const [scanName, setScanName] = useState('');
     const [selectedSources, setSelectedSources] = useState<string[]>([]);
     const [selectedPiiTypes, setSelectedPiiTypes] = useState<string[]>(['PAN', 'AADHAAR', 'EMAIL']);
     const [executionMode, setExecutionMode] = useState<'sequential' | 'parallel'>('parallel');
+
+    // Real data state
+    const [sources, setSources] = useState<Connection[]>([]);
+    const [loadingSources, setLoadingSources] = useState(false);
+    const [sourcesError, setSourcesError] = useState<string | null>(null);
+    const [scanId, setScanId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            loadSources();
+        }
+    }, [isOpen]);
+
+    const loadSources = async () => {
+        try {
+            setLoadingSources(true);
+            setSourcesError(null);
+            const data = await connectionsApi.getConnections();
+            setSources(data.connections || []);
+        } catch (error) {
+            console.error('Failed to load sources:', error);
+            setSourcesError('Failed to load data sources. Please try again.');
+        } finally {
+            setLoadingSources(false);
+        }
+    };
 
     if (!isOpen) return null;
 
@@ -95,14 +116,17 @@ export function ScanConfigModal({ isOpen, onClose, onRunScan }: ScanConfigModalP
                 executionMode
             };
 
-            // Call API
-            await scansApi.triggerScan(config);
+            // Call API and get scan ID
+            const response = await scansApi.triggerScan(config);
+            setScanId(response.scan_id);
+
+            console.log(`Scan triggered successfully! Scan ID: ${response.scan_id}`);
 
             onRunScan?.(config);
             onClose();
         } catch (error) {
             console.error('Failed to trigger scan:', error);
-            // Optional: Add error state/toast here
+            alert('Failed to trigger scan. Please check console for details.');
         }
     };
 
@@ -150,22 +174,48 @@ export function ScanConfigModal({ isOpen, onClose, onRunScan }: ScanConfigModalP
                             Target Sources ({selectedSources.length} selected)
                         </label>
                         <div className="grid grid-cols-3 gap-3">
-                            {MOCK_SOURCES.map((source) => (
-                                <button
-                                    key={source.id}
-                                    onClick={() => toggleSource(source.id)}
-                                    className={`
+                            {loadingSources ? (
+                                <div className="col-span-3 text-center py-8 text-slate-400">
+                                    Loading data sources...
+                                </div>
+                            ) : sourcesError ? (
+                                <div className="col-span-3 text-center py-8">
+                                    <p className="text-red-400 mb-2">{sourcesError}</p>
+                                    <button
+                                        onClick={loadSources}
+                                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm text-white"
+                                    >
+                                        Retry
+                                    </button>
+                                </div>
+                            ) : sources.length === 0 ? (
+                                <div className="col-span-3 text-center py-8 text-slate-400">
+                                    No data sources configured. Please add a source first.
+                                </div>
+                            ) : (
+                                sources.map((source) => (
+                                    <button
+                                        key={source.id}
+                                        onClick={() => toggleSource(source.profile_name)}
+                                        className={`
                     p-3 rounded-lg border-2 transition-all text-left
-                    ${selectedSources.includes(source.id)
-                                            ? 'border-green-500 bg-green-500/10'
-                                            : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
-                                        }
+                    ${selectedSources.includes(source.profile_name)
+                                                ? 'border-green-500 bg-green-500/10'
+                                                : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                                            }
                   `}
-                                >
-                                    <div className="font-medium text-white text-sm">{source.name}</div>
-                                    <div className="text-xs text-slate-400 mt-1">{source.type}</div>
-                                </button>
-                            ))}
+                                    >
+                                        <div className="font-medium text-white text-sm">{source.profile_name}</div>
+                                        <div className="text-xs text-slate-400 mt-1">{source.source_type}</div>
+                                        {source.validation_status && (
+                                            <div className={`text-xs mt-1 ${source.validation_status === 'valid' ? 'text-green-400' : 'text-yellow-400'
+                                                }`}>
+                                                {source.validation_status}
+                                            </div>
+                                        )}
+                                    </button>
+                                ))
+                            )}
                         </div>
                     </div>
 

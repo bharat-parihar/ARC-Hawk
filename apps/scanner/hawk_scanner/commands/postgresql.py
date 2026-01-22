@@ -1,5 +1,6 @@
 import psycopg2
 from hawk_scanner.internals import system
+from hawk_scanner.internals.validation_integration import validate_findings
 from rich.console import Console
 
 console = Console()
@@ -103,19 +104,21 @@ def check_data_patterns(args, conn, patterns, profile_name, database_name, limit
                     value_str = str(value)
                     matches = system.match_strings(args, value_str)
                     if matches:
-                        for match in matches:
-                            results.append({
-                                'host': conn.dsn,
-                                'database': database_name,
-                                'schema': schema,  # NEW: Track schema
-                                'table': table,
-                                'column': column,
-                                'pattern_name': match['pattern_name'],
-                                'matches': match['matches'],
-                                'sample_text': match['sample_text'],
-                                'profile': profile_name,
-                                'data_source': 'postgresql'
-                            })
+                        validated_matches = validate_findings(matches, args)
+                        if validated_matches:
+                            for match in validated_matches:
+                                results.append({
+                                    'host': conn.dsn,
+                                    'database': database_name,
+                                    'schema': schema,  # NEW: Track schema
+                                    'table': table,
+                                    'column': column,
+                                    'pattern_name': match['pattern_name'],
+                                    'matches': match['matches'],
+                                    'sample_text': match['sample_text'],
+                                    'profile': profile_name,
+                                    'data_source': 'postgresql'
+                                })
         
         total_rows_scanned += row_count
 

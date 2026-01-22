@@ -30,7 +30,6 @@ func (a *ScanActivities) TransitionScanState(ctx context.Context, scanID string,
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
 
 	// Update scan_runs status
 	result, err := tx.ExecContext(ctx, `
@@ -39,14 +38,17 @@ func (a *ScanActivities) TransitionScanState(ctx context.Context, scanID string,
 		WHERE id = $2 AND status = $3
 	`, toState, scanID, fromState)
 	if err != nil {
+		tx.Rollback()
 		return fmt.Errorf("failed to update scan status: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		tx.Rollback()
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
+		tx.Rollback()
 		return fmt.Errorf("scan not found or already in different state: scanID=%s, expectedState=%s", scanID, fromState)
 	}
 
@@ -57,6 +59,7 @@ func (a *ScanActivities) TransitionScanState(ctx context.Context, scanID string,
 		VALUES ($1, $2, $3, NOW())
 	`, scanID, fromState, toState)
 	if err != nil {
+		tx.Rollback()
 		return fmt.Errorf("failed to record state transition: %w", err)
 	}
 
@@ -133,7 +136,6 @@ func (a *ScanActivities) ExecuteRemediation(ctx context.Context, findingID strin
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
 
 	// Create remediation action record
 	actionID := uuid.New().String()
@@ -143,6 +145,7 @@ func (a *ScanActivities) ExecuteRemediation(ctx context.Context, findingID strin
 		VALUES ($1, $2, $3, $4, NOW(), NOW(), 'IN_PROGRESS')
 	`, actionID, findingID, actionType, userID)
 	if err != nil {
+		tx.Rollback()
 		return "", fmt.Errorf("failed to create remediation action: %w", err)
 	}
 
@@ -156,6 +159,7 @@ func (a *ScanActivities) ExecuteRemediation(ctx context.Context, findingID strin
 		WHERE id = $1
 	`, actionID)
 	if err != nil {
+		tx.Rollback()
 		return "", fmt.Errorf("failed to update remediation status: %w", err)
 	}
 
@@ -166,6 +170,7 @@ func (a *ScanActivities) ExecuteRemediation(ctx context.Context, findingID strin
 		VALUES ('REMEDIATION_EXECUTED', NOW(), $1, 'remediation_action', $2, $3)
 	`, userID, actionID, actionType)
 	if err != nil {
+		tx.Rollback()
 		return "", fmt.Errorf("failed to record audit log: %w", err)
 	}
 
@@ -182,7 +187,6 @@ func (a *ScanActivities) RollbackRemediation(ctx context.Context, actionID strin
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
 
 	// Update action status to ROLLED_BACK
 	_, err = tx.ExecContext(ctx, `
@@ -191,6 +195,7 @@ func (a *ScanActivities) RollbackRemediation(ctx context.Context, actionID strin
 		WHERE id = $1
 	`, actionID)
 	if err != nil {
+		tx.Rollback()
 		return fmt.Errorf("failed to update remediation status: %w", err)
 	}
 

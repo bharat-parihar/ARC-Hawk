@@ -11,10 +11,7 @@ from rich.text import Text
 from collections import defaultdict
 from hawk_scanner.internals import system
 from rich import print
-import ssl
-
-# Disable SSL verification globally
-ssl._create_default_https_context = ssl._create_unverified_context
+# SSL verification is enabled by default
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -220,6 +217,28 @@ def main():
     start_time = time.time()
 
     args = system.parse_args()
+    
+    # NEW: Read scan config file if provided (from Go backend)
+    if hasattr(args, 'config') and args.config:
+        import json
+        try:
+            with open(args.config, 'r') as f:
+                scan_config = json.load(f)
+                # Extract ingest_url if not provided via command line
+                if hasattr(args, 'ingest_url') and args.ingest_url:
+                    pass  # Use command line value
+                elif 'ingest_url' in scan_config:
+                    args.ingest_url = scan_config['ingest_url']
+                    print(f"[INFO] Using ingest_url from config: {args.ingest_url}")
+                
+                # Extract scan_id if present
+                if 'scan_id' in scan_config:
+                    args.scan_id = scan_config['scan_id']
+                    print(f"[INFO] Using Scan ID from config: {args.scan_id}")
+
+        except Exception as e:
+            print(f"[WARNING] Failed to read scan config: {e}")
+    
     system.print_banner(args)
     results = []
     

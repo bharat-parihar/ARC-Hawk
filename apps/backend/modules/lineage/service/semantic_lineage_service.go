@@ -4,23 +4,42 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/arc-platform/backend/modules/shared/domain/repository"
 	"github.com/arc-platform/backend/modules/shared/infrastructure/persistence"
+	"github.com/arc-platform/backend/modules/shared/interfaces"
 	"github.com/google/uuid"
 )
 
 // SemanticLineageService builds aggregated semantic lineage graphs
+// Implements LineageSync interface
 type SemanticLineageService struct {
-	neo4jRepo *persistence.Neo4jRepository
-	pgRepo    *persistence.PostgresRepository
+	neo4jRepo        *persistence.Neo4jRepository
+	pgRepo           *persistence.PostgresRepository
+	findingsProvider interfaces.FindingsProvider
 }
 
 // NewSemanticLineageService creates a new semantic lineage service
-func NewSemanticLineageService(neo4jRepo *persistence.Neo4jRepository, pgRepo *persistence.PostgresRepository) *SemanticLineageService {
+func NewSemanticLineageService(
+	neo4jRepo *persistence.Neo4jRepository,
+	pgRepo *persistence.PostgresRepository,
+	findingsProvider interfaces.FindingsProvider,
+) *SemanticLineageService {
 	return &SemanticLineageService{
-		neo4jRepo: neo4jRepo,
-		pgRepo:    pgRepo,
+		neo4jRepo:        neo4jRepo,
+		pgRepo:           pgRepo,
+		findingsProvider: findingsProvider,
 	}
+}
+
+// IsAvailable returns true if Neo4j is configured
+// Implements LineageSync interface
+func (s *SemanticLineageService) IsAvailable() bool {
+	return s.neo4jRepo != nil
+}
+
+// SyncAllAssets triggers full lineage synchronization
+// Implements LineageSync interface
+func (s *SemanticLineageService) SyncAllAssets(ctx context.Context) error {
+	return s.SyncLineage(ctx)
 }
 
 // SemanticNode represents a node in the semantic graph
@@ -95,13 +114,13 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 	}
 	fmt.Printf("✅ [SYNC] Created SYSTEM_OWNS_ASSET: %s → %s\n", systemID, asset.ID)
 
-	// 4. Get findings for this asset
-	findings, err := s.pgRepo.ListFindings(ctx, repository.FindingFilters{AssetID: &assetID}, 1000, 0)
+	// 4. Get findings for this asset using FindingsProvider
+	findings, err := s.findingsProvider.GetFindingsByAsset(ctx, assetID, 1000, 0)
 	if err != nil {
 		fmt.Printf("❌ [SYNC] Failed to get findings for asset %s: %v\n", assetID, err)
 		return fmt.Errorf("failed to get findings: %w", err)
 	}
-	fmt.Printf("📊 [SYNC] Retrieved %d findings from PostgreSQL for asset: %s\n", len(findings), assetID)
+	fmt.Printf("📊 [SYNC] Retrieved %d findings from FindingsProvider for asset: %s\n", len(findings), assetID)
 
 	// 5. Aggregate findings by PII TYPE (not classification type)
 	// Frozen Semantic Contract: PII_Category = specific PII types (IN_AADHAAR, CREDIT_CARD, etc.)
@@ -111,8 +130,8 @@ func (s *SemanticLineageService) SyncAssetToNeo4j(ctx context.Context, assetID u
 	missingPIITypeCount := 0
 
 	for _, finding := range findings {
-		// Get classification to extract PII type and DPDPA metadata
-		classifications, err := s.pgRepo.GetClassificationsByFindingID(ctx, finding.ID)
+		// Get classification using FindingsProvider
+		classifications, err := s.findingsProvider.GetClassificationsByFinding(ctx, finding.ID)
 		if err != nil || len(classifications) == 0 {
 			skippedCount++
 			continue

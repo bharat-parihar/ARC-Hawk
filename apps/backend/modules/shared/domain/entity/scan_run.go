@@ -9,6 +9,7 @@ import (
 // ScanRun represents a single scan execution
 type ScanRun struct {
 	ID              uuid.UUID              `json:"id"`
+	TenantID        uuid.UUID              `json:"tenant_id"`
 	ProfileName     string                 `json:"profile_name"`
 	ScanStartedAt   time.Time              `json:"scan_started_at"`
 	ScanCompletedAt time.Time              `json:"scan_completed_at"`

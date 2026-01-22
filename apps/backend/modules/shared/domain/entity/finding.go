@@ -9,6 +9,7 @@ import (
 // Finding represents an individual PII or secret detection
 type Finding struct {
 	ID                  uuid.UUID              `json:"id"`
+	TenantID            uuid.UUID              `json:"tenant_id"`
 	ScanRunID           uuid.UUID              `json:"scan_run_id"`
 	AssetID             uuid.UUID              `json:"asset_id"`
 	PatternID           *uuid.UUID             `json:"pattern_id,omitempty"`

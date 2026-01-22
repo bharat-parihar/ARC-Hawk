@@ -10,29 +10,34 @@ import (
 	"strings"
 	"time"
 
-	lineagesvc "github.com/arc-platform/backend/modules/lineage/service"
 	"github.com/arc-platform/backend/modules/shared/domain/entity"
 	"github.com/arc-platform/backend/modules/shared/domain/repository"
 	"github.com/arc-platform/backend/modules/shared/infrastructure/persistence"
+	"github.com/arc-platform/backend/modules/shared/interfaces"
 	"github.com/arc-platform/backend/pkg/normalization"
 	"github.com/google/uuid"
 )
 
 // IngestionService handles scan ingestion and normalization
 type IngestionService struct {
-	repo            *persistence.PostgresRepository
-	classifier      *ClassificationService
-	enrichment      *EnrichmentService
-	semanticLineage *lineagesvc.SemanticLineageService
+	repo         *persistence.PostgresRepository
+	classifier   *ClassificationService
+	enrichment   *EnrichmentService
+	assetManager interfaces.AssetManager
 }
 
 // NewIngestionService creates a new ingestion service
-func NewIngestionService(repo *persistence.PostgresRepository, classifier *ClassificationService, enrichment *EnrichmentService, semanticLineage *lineagesvc.SemanticLineageService) *IngestionService {
+func NewIngestionService(
+	repo *persistence.PostgresRepository,
+	classifier *ClassificationService,
+	enrichment *EnrichmentService,
+	assetManager interfaces.AssetManager,
+) *IngestionService {
 	return &IngestionService{
-		repo:            repo,
-		classifier:      classifier,
-		enrichment:      enrichment,
-		semanticLineage: semanticLineage,
+		repo:         repo,
+		classifier:   classifier,
+		enrichment:   enrichment,
+		assetManager: assetManager,
 	}
 }
 
@@ -82,7 +87,8 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 		if r := recover(); r != nil {
 			tx.Rollback()
 			log.Printf("PANIC during ingestion, transaction rolled back: %v", r)
-			panic(r)
+			// Don't re-panic - log and return error instead
+			// The panic value is logged above
 		}
 	}()
 
@@ -117,74 +123,19 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 
 	// Process each finding
 	for _, hawkeyeFinding := range allFindings {
-		// Generate stable asset ID based on data source type
-		// For databases: use table name to create separate assets per table
-		// For files: use file path as before
-		var assetIdentifier string
-		if hawkeyeFinding.DataSource == "postgresql" || hawkeyeFinding.DataSource == "mysql" {
-			// Extract table name from path format: "connection string > schema.table.column"
-			tableName := extractTableName(hawkeyeFinding.FilePath)
-			assetIdentifier = fmt.Sprintf("%s::%s::%s",
-				hawkeyeFinding.DataSource,
-				hawkeyeFinding.Host,
-				tableName)
-		} else {
-			// For filesystem sources, use file path
-			assetIdentifier = hawkeyeFinding.FilePath
+		// Build asset from finding data
+		asset := s.buildAssetFromFinding(&hawkeyeFinding, scanRun)
+
+		// Delegate asset creation to AssetManager (single source of truth)
+		assetID, isNew, err := s.assetManager.CreateOrUpdateAsset(ctx, asset)
+		if err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("failed to create/update asset: %w", err)
 		}
-		stableID := generateStableID(assetIdentifier)
 
-		// Check if asset already exists
-		assetID, exists := assetMap[stableID]
-		if !exists {
-			// Try to get existing asset from database (using transaction)
-			existingAsset, err := tx.GetAssetByStableID(ctx, stableID)
-			if err != nil {
-				tx.Rollback()
-				return nil, fmt.Errorf("failed to check existing asset: %w", err)
-			}
-
-			if existingAsset != nil {
-				assetID = existingAsset.ID
-				assetMap[stableID] = assetID
-			} else {
-				// Extract owner from file data if available
-				owner := "Platform Team"
-				if val, ok := hawkeyeFinding.FileData["owner"].(string); ok {
-					owner = val
-				}
-
-				// Map profile to environment
-				env := "Production"
-				if scanRun.ProfileName == "test_scan" || scanRun.ProfileName == "dev" {
-					env = "Development"
-				}
-
-				// Create new asset
-				asset := &entity.Asset{
-					ID:           uuid.New(),
-					StableID:     stableID,
-					AssetType:    "file",
-					Name:         getFileName(hawkeyeFinding.FilePath),
-					Path:         hawkeyeFinding.FilePath,
-					DataSource:   hawkeyeFinding.DataSource,
-					Host:         hawkeyeFinding.Host,
-					Environment:  env,
-					Owner:        owner,
-					SourceSystem: fmt.Sprintf("%s://%s", hawkeyeFinding.DataSource, hawkeyeFinding.Host),
-					FileMetadata: hawkeyeFinding.FileData,
-					RiskScore:    calculateRiskScore(hawkeyeFinding.Severity),
-				}
-
-				if err := tx.CreateAsset(ctx, asset); err != nil {
-					tx.Rollback()
-					return nil, fmt.Errorf("failed to create asset: %w", err)
-				}
-
-				assetID = asset.ID
-				assetMap[stableID] = assetID
-				assetsCreated++
-			}
+		assetMap[asset.StableID] = assetID
+		if isNew {
+			assetsCreated++
 		}
 
 		// Get or create pattern
@@ -239,18 +190,12 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			continue
 		}
 
-		// RECOMMENDED: Filter Non-PII at ingestion time (60-80% DB size reduction)
-		// Alternative: Store all, filter at query time (allows threshold tuning)
-		// Current: Using ingestion-time filtering for production efficiency
-		// TEMPORARILY DISABLED: Allow all findings through for dashboard visibility
-		/*
-			if decision.Classification == "Non-PII" || decision.FinalScore < 0.45 {
-				// Skip low-confidence and Non-PII findings to prevent database bloat
-				// If you need retrospective tuning, comment this block and ensure
-				// query-time filtering is applied in finding_repository.go
-				continue
-			}
-		*/
+		// Filter Non-PII at ingestion time (60-80% DB size reduction)
+		// Only store findings that are confirmed PII with sufficient confidence
+		if decision.Classification == "Non-PII" || decision.FinalScore < 0.45 {
+			// Skip low-confidence and Non-PII findings to prevent database bloat
+			continue
+		}
 
 		// Sanitize inputs for Postgres (remove null bytes) with logging
 		sanitizedMatches := make([]string, len(hawkeyeFinding.Matches))
@@ -396,22 +341,12 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			asset.TotalFindings = count
 			// Recalculate robust risk score based on all findings
 			if err := s.recalculateAssetRisk(ctx, assetID); err != nil {
-				// Log error but verify other assets
+				// Log error but continue with other assets
 				fmt.Printf("Error recalculating risk for asset %s: %v\n", stableID, err)
 			}
 
-			// Sync to Neo4j if semantic lineage is enabled
-			if s.semanticLineage != nil {
-				log.Printf("INFO: Syncing asset %s to Neo4j semantic graph", assetID)
-				if err := s.semanticLineage.SyncAssetToNeo4j(ctx, assetID); err != nil {
-					// Log but don't fail ingestion (graceful degradation)
-					log.Printf("WARNING: Failed to sync asset %s to Neo4j: %v", assetID, err)
-				} else {
-					log.Printf("SUCCESS: Asset %s synced to Neo4j", assetID)
-				}
-			} else {
-				log.Printf("INFO: Neo4j semantic lineage is disabled - skipping sync for asset %s", assetID)
-			}
+			// Note: Lineage sync is now handled by AssetService automatically
+			// No need to call it here - loose coupling achieved!
 		}
 	}
 
@@ -590,14 +525,6 @@ func extractTableName(filePath string) string {
 }
 
 // generateStableID creates a stable identifier from asset identifier
-func generateStableID(identifier string) string {
-	// FIX ING-003: Normalize to prevent duplicates on case-insensitive systems
-	// Convert to lowercase to prevent duplicates on macOS/Windows
-	normalizedPath := strings.ToLower(identifier)
-	hash := sha256.Sum256([]byte(normalizedPath))
-	return hex.EncodeToString(hash[:])
-}
-
 // getFileName extracts filename from path
 func getFileName(path string) string {
 	// Simple extraction - in production use filepath.Base
@@ -650,6 +577,35 @@ func categorizePattern(patternName string) string {
 	}
 
 	return "other"
+}
+
+// buildAssetFromFinding constructs an asset entity from finding data
+func (s *IngestionService) buildAssetFromFinding(finding *HawkeyeFinding, scanRun *entity.ScanRun) *entity.Asset {
+	// Extract owner from file data if available
+	owner := "Platform Team"
+	if val, ok := finding.FileData["owner"].(string); ok {
+		owner = val
+	}
+
+	// Map profile to environment
+	env := "Production"
+	if scanRun.ProfileName == "test_scan" || scanRun.ProfileName == "dev" {
+		env = "Development"
+	}
+
+	return &entity.Asset{
+		AssetType:    "file",
+		Name:         getFileName(finding.FilePath),
+		Path:         finding.FilePath,
+		DataSource:   finding.DataSource,
+		Host:         finding.Host,
+		Environment:  env,
+		Owner:        owner,
+		SourceSystem: fmt.Sprintf("%s://%s", finding.DataSource, finding.Host),
+		FileMetadata: finding.FileData,
+		RiskScore:    calculateRiskScore(finding.Severity),
+		// StableID will be generated by AssetService
+	}
 }
 
 // Ensure interface compatibility

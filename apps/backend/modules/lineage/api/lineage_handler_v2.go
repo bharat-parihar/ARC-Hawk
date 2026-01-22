@@ -47,6 +47,7 @@ func (h *LineageHandlerV2) GetLineage(c *gin.Context) {
 	totalSystems := 0
 	totalAssets := 0
 	totalPIITypes := 0
+	piiTypeAggregations := make(map[string]int)
 
 	for _, node := range graph.Nodes {
 		switch node.Type {
@@ -56,7 +57,19 @@ func (h *LineageHandlerV2) GetLineage(c *gin.Context) {
 			totalAssets++
 		case "pii_category":
 			totalPIITypes++
+			if piiType, ok := node.Metadata["pii_type"].(string); ok {
+				piiTypeAggregations[piiType]++
+			}
 		}
+	}
+
+	// Convert to response format
+	byPIIType := make([]gin.H, 0, len(piiTypeAggregations))
+	for piiType, count := range piiTypeAggregations {
+		byPIIType = append(byPIIType, gin.H{
+			"pii_type": piiType,
+			"count":    count,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -70,7 +83,7 @@ func (h *LineageHandlerV2) GetLineage(c *gin.Context) {
 				"total_systems":   totalSystems,
 				"total_assets":    totalAssets,
 				"total_pii_types": totalPIITypes,
-				"by_pii_type":     []interface{}{}, // TODO: Implement detailed PII aggregations
+				"by_pii_type":     byPIIType,
 			},
 		},
 	})

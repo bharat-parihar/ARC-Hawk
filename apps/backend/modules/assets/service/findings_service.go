@@ -204,3 +204,24 @@ func (s *FindingsService) SubmitFeedback(ctx context.Context, feedback *entity.F
 
 	return nil
 }
+
+// GetFindingsByAsset retrieves all findings for a specific asset
+// Implements FindingsProvider interface
+func (s *FindingsService) GetFindingsByAsset(ctx context.Context, assetID uuid.UUID, limit, offset int) ([]*entity.Finding, error) {
+	filters := repository.FindingFilters{
+		AssetID: &assetID,
+	}
+	return s.repo.ListFindings(ctx, filters, limit, offset)
+}
+
+// GetClassificationsByFinding retrieves classifications for a finding
+// Implements FindingsProvider interface
+func (s *FindingsService) GetClassificationsByFinding(ctx context.Context, findingID uuid.UUID) ([]*entity.Classification, error) {
+	return s.repo.GetClassificationsByFindingID(ctx, findingID)
+}
+
+// CountFindings returns total findings matching filters
+// Implements FindingsProvider interface
+func (s *FindingsService) CountFindings(ctx context.Context, filters repository.FindingFilters) (int, error) {
+	return s.repo.CountFindings(ctx, filters)
+}

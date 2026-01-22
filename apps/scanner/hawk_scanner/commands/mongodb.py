@@ -1,5 +1,6 @@
 import pymongo
 from hawk_scanner.internals import system
+from hawk_scanner.internals.validation_integration import validate_findings
 from rich.console import Console
 
 console = Console()
@@ -44,18 +45,20 @@ def check_data_patterns(args, db, patterns, profile_name, database_name, limit_s
                     value_str = str(field_value)
                     matches = system.match_strings(args, value_str)
                     if matches:
-                        for match in matches:
-                            results.append({
-                                'host': db.client.address[0],
-                                'database': database_name,
-                                'collection': collection_name,
-                                'field': field_name,
-                                'pattern_name': match['pattern_name'],
-                                'matches': match['matches'],
-                                'sample_text': match['sample_text'],
-                                'profile': profile_name,
-                                'data_source': 'mongodb'
-                            })
+                        validated_matches = validate_findings(matches, args)
+                        if validated_matches:
+                            for match in validated_matches:
+                                results.append({
+                                    'host': db.client.address[0],
+                                    'database': database_name,
+                                    'collection': collection_name,
+                                    'field': field_name,
+                                    'pattern_name': match['pattern_name'],
+                                    'matches': match['matches'],
+                                    'sample_text': match['sample_text'],
+                                    'profile': profile_name,
+                                    'data_source': 'mongodb'
+                                })
 
     return results
 

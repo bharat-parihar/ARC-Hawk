@@ -80,8 +80,13 @@ def ingest_verified_findings(args, verified_findings, scan_metadata=None):
     
     # Prepare payload with VerifiedScanInput schema
     # Backend expects: { scan_id, scan_metadata, findings }
+    # Use scan_id from args (passed from backend config) or generate one
+    # Prioritize args, then env var, then timestamp
+    import os
+    scan_id = args.scan_id if hasattr(args, 'scan_id') and args.scan_id else os.environ.get('SCAN_ID', f"scan_{int(time.time())}")
+    
     payload = {
-        "scan_id": f"scan_{int(time.time())}",
+        "scan_id": scan_id,
         "scan_metadata": scan_metadata or {
             "scanner_version": "hawk-eye-scanner-2.0-cli",
             "scan_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -198,9 +203,9 @@ def ingest_scan_results(args, grouped_results, scan_metadata=None):
                 "CREDIT_CARD": "CREDIT_CARD",
                 
                 # Phone
-                "Phone": "PHONE_NUMBER",
-                "Phone Number": "PHONE_NUMBER",
-                "Indian Phone Number": "PHONE_NUMBER",
+                "Phone": "IN_PHONE",
+                "Phone Number": "IN_PHONE",
+                "Indian Phone Number": "IN_PHONE",
                 
                 # Email
                 "Email": "EMAIL_ADDRESS",

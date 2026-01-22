@@ -22,6 +22,10 @@ export const findingsApi = {
         page_size?: number;
         severity?: string;
         asset_id?: string;
+        status?: string;
+        asset?: string;
+        pii_type?: string;
+        search?: string;
     }): Promise<{ findings: any[], total: number }> => {
         // Backend returns wrapped response: { data: { findings: [], total: ... } }
         const res = await get<any>('/findings', params);

@@ -1,9 +1,11 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/arc-platform/backend/modules/remediation/service"
+	"github.com/arc-platform/backend/modules/shared/interfaces"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,7 +40,7 @@ type ExecuteRemediationResponse struct {
 func (h *RemediationHandler) ExecuteRemediation(c *gin.Context) {
 	var req ExecuteRemediationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, interfaces.NewErrorResponse(interfaces.ErrCodeBadRequest, "Invalid request format", err.Error()))
 		return
 	}
 
@@ -50,7 +52,7 @@ func (h *RemediationHandler) ExecuteRemediation(c *gin.Context) {
 	for _, findingID := range req.FindingIDs {
 		actionID, err := h.service.ExecuteRemediation(c.Request.Context(), findingID, req.ActionType, req.UserID)
 		if err != nil {
-			errors = append(errors, err.Error())
+			errors = append(errors, fmt.Sprintf("Finding %s: %s", findingID, err.Error()))
 			failed++
 		} else {
 			actionIDs = append(actionIDs, actionID)
@@ -88,13 +90,13 @@ func (h *RemediationHandler) GeneratePreview(c *gin.Context) {
 		ActionType string   `json:"action_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, interfaces.NewErrorResponse(interfaces.ErrCodeBadRequest, "Invalid request format", err.Error()))
 		return
 	}
 
 	preview, err := h.service.GenerateRemediationPreview(c.Request.Context(), req.FindingIDs, req.ActionType)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, interfaces.NewErrorResponse(interfaces.ErrCodeInternalServer, "Failed to generate remediation preview", err.Error()))
 		return
 	}
 
@@ -107,7 +109,7 @@ func (h *RemediationHandler) GetRemediationAction(c *gin.Context) {
 
 	action, err := h.service.GetRemediationAction(c.Request.Context(), actionID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, interfaces.NewErrorResponse(interfaces.ErrCodeInternalServer, "Failed to retrieve remediation action", err.Error()))
 		return
 	}
 
@@ -118,10 +120,15 @@ func (h *RemediationHandler) GetRemediationAction(c *gin.Context) {
 func (h *RemediationHandler) GetRemediationActions(c *gin.Context) {
 	findingID := c.Param("findingId")
 
-	// TODO: Implement query to get remediation actions
+	actions, err := h.service.GetRemediationActions(c.Request.Context(), findingID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, interfaces.NewErrorResponse(interfaces.ErrCodeInternalServer, "Failed to retrieve remediation actions", err.Error()))
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"finding_id": findingID,
-		"actions":    []interface{}{},
+		"actions":    actions,
 	})
 }
 
@@ -129,10 +136,15 @@ func (h *RemediationHandler) GetRemediationActions(c *gin.Context) {
 func (h *RemediationHandler) GetRemediationHistory(c *gin.Context) {
 	assetID := c.Param("assetId")
 
-	// TODO: Implement query to get remediation history
+	history, err := h.service.GetRemediationHistory(c.Request.Context(), assetID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, interfaces.NewErrorResponse(interfaces.ErrCodeInternalServer, "Failed to retrieve remediation history", err.Error()))
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"asset_id": assetID,
-		"history":  []interface{}{},
+		"history":  history,
 	})
 }
 
@@ -140,10 +152,11 @@ func (h *RemediationHandler) GetRemediationHistory(c *gin.Context) {
 func (h *RemediationHandler) GetPIIPreview(c *gin.Context) {
 	findingID := c.Param("findingId")
 
-	// TODO: Implement PII preview with masking
-	c.JSON(http.StatusOK, gin.H{
-		"finding_id":     findingID,
-		"masked_preview": "XXXX-XXXX-1234",
-		"pii_type":       "IN_AADHAAR",
-	})
+	preview, err := h.service.GetPIIPreview(c.Request.Context(), findingID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, interfaces.NewErrorResponse(interfaces.ErrCodeInternalServer, "Failed to generate PII preview", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, preview)
 }

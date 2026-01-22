@@ -36,6 +36,14 @@ type ModuleDependencies struct {
 
 	// Module registry for inter-module communication
 	Registry *ModuleRegistry
+
+	// WebSocket service for real-time communication
+	WebSocketService interface{}
+
+	// Interface dependencies (injected by main.go for loose coupling)
+	AssetManager     AssetManager
+	FindingsProvider FindingsProvider
+	LineageSync      LineageSync
 }
 
 // ModuleRegistry manages all registered modules

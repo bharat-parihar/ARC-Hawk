@@ -9,6 +9,7 @@ import (
 // Asset represents a normalized file or resource
 type Asset struct {
 	ID              uuid.UUID              `json:"id"`
+	TenantID        uuid.UUID              `json:"tenant_id"`
 	StableID        string                 `json:"stable_id"`
 	AssetType       string                 `json:"asset_type"`
 	Name            string                 `json:"name"`

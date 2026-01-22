@@ -1,79 +1,89 @@
 # ARC Platform Backend
 
-Enterprise-grade Data Lineage and PII Classification Platform backend built with Go, following Clean Architecture principles.
+The core API and business logic layer for the ARC-Hawk platform, built with **Go (Golang)** following Clean Architecture principles.
 
-## Architecture
+## 🌟 Features
 
-The backend follows Clean Architecture with clear separation of concerns:
+- **Modular Monolith**: 7 distinct business modules (Assets, Scanning, Lineage, Compliance, etc.).
+- **Real-time Updates**: WebSocket integration for live scan progress bars.
+- **Workflow Orchestration**: **Temporal** integration for reliable, long-running scan & remediation jobs.
+- **Graph Lineage**: **Neo4j** integration for semantic data mapping.
+- **Clean Architecture**: Strict separation of Handler -> Service -> Domain -> Infrastructure.
 
-- **`cmd/server/`** - Application entry point
-- **`internal/api/`** - HTTP handlers and routing (Gin framework)
-- **`internal/service/`** - Business logic layer
-- **`internal/domain/`** - Domain models and interfaces
-- **`internal/infrastructure/`** - External dependencies (PostgreSQL, Neo4j, Presidio)
-- **`pkg/`** - Reusable packages (Logger, Validator)
+## 📂 Module Structure
 
-## Key Integrations
+```
+internal/
+├── api/                # HTTP Handlers (Gin)
+├── domain/             # Core Interfaces & Models
+├── infrastructure/     # DB/External Adapters
+├── service/            # Business Logic
+│
+└── modules/            # Business Modules
+    ├── analytics/      # Risk scoring & dashboard stats
+    ├── assets/         # Inventory management
+    ├── compliance/     # DPDPA logic & reporting
+    ├── connections/    # Source credential management
+    ├── lineage/        # Neo4j graph operations
+    ├── masking/        # Remediation logic
+    └── scanning/       # Scan ingestion & WebSocket events
+```
 
-- **PostgreSQL**: Primary data store for scans, assets, and findings.
-- **Neo4j**: Graph database for semantic lineage and relationship traversal.
-- **Presidio**: PII classification engine (gRPC integration).
+## 🚀 Getting Started
 
+### Prerequisites
 
-## Prerequisites
-
-- Go 1.21 or higher
+- Go 1.21+
 - PostgreSQL 15+
+- Neo4j 5.15+
+- Temporal Server
 
-## Setup
+### Environment Variables
 
-1. **Install dependencies:**
-   ```bash
-   go mod download
-   ```
+Copy `.env.example` to `.env` and configure:
 
-2. **Configure environment:**
-   ```bash
-   cp configs/.env.example .env
-   # Edit .env with your database  credentials
-   ```
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| `PORT` | API Port | `8080` |
+| `DB_HOST` | PostgreSQL Host | `localhost` |
+| `DB_USER` | DB Username | `postgres` |
+| `NEO4J_URI` | Neo4j Connection | `bolt://localhost:7687` |
+| `TEMPORAL_ADDRESS` | Temporal Server | `localhost:7233` |
+| `SCAN_ID` | (For Scanner) | Auto-generated |
 
-3. **Run database migrations:**
-   ```bash
-   # Start PostgreSQL (see root docker-compose.yml)
-   docker-compose up -d postgres
-   ```
+### Running Locally
 
-## Running
-
-**Development mode:**
 ```bash
+# 1. Install Dependencies
+go mod download
+
+# 2. Run Server
 go run cmd/server/main.go
 ```
 
-**Build and run:**
+The server will start on `http://localhost:8080`.
+
+## 🔌 API Endpoints
+
+### Scanning
+- `POST /api/v1/scans/trigger` - Start a new scan (Temporal workflow)
+- `POST /api/v1/scans/ingest` - Ingest results (called by Scanner)
+- `GET /api/v1/scans/:id/status` - Check workflow status
+
+### Findings
+- `GET /api/v1/findings` - List findings with filters (Status, Asset, PII Type)
+- `PATCH /api/v1/findings/:id/feedback` - Mark False Positive
+
+### Remediation
+- `POST /api/v1/remediation/execute` - Trigger masking/deletion workflow
+
+### Lineage
+- `GET /api/v1/lineage` - Fetch Cytoscape/ReactFlow graph data
+
+## 🧪 Testing
+
+Run unit and integration tests:
+
 ```bash
-go build -o bin/server ./cmd/server/
-./bin/server
+go test ./... -v
 ```
-
-Server will start on `http://localhost:8080`
-
-## API Endpoints
-
-- `GET /health` - Health check
-- `POST /api/v1/scans/ingest` - Ingest scan data from Hawk-eye
-- `GET /api/v1/scans/:id` - Get scan status
-- `GET /api/v1/lineage` - Get data lineage graph
-- `GET /api/v1/classification/summary` - Get PII classification summary
-- `GET /api/v1/findings` - Get findings with filtering
-
-## Testing
-
-```bash
-go test ./...
-```
-
-## Database Migrations
-
-Database schema is located in `migrations/schema.sql` and is automatically applied when using docker-compose.

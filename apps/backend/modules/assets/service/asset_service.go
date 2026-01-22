@@ -2,21 +2,112 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"log"
+	"strings"
 
 	"github.com/arc-platform/backend/modules/shared/domain/entity"
 	"github.com/arc-platform/backend/modules/shared/infrastructure/persistence"
+	"github.com/arc-platform/backend/modules/shared/interfaces"
 	"github.com/google/uuid"
 )
 
 // AssetService handles asset retrieval and management
+// This is the SINGLE SOURCE OF TRUTH for asset lifecycle
 type AssetService struct {
-	repo *persistence.PostgresRepository
+	repo        *persistence.PostgresRepository
+	lineageSync interfaces.LineageSync
 }
 
 // NewAssetService creates a new asset service
-func NewAssetService(repo *persistence.PostgresRepository) *AssetService {
-	return &AssetService{repo: repo}
+func NewAssetService(repo *persistence.PostgresRepository, lineageSync interfaces.LineageSync) *AssetService {
+	if lineageSync == nil {
+		lineageSync = &interfaces.NoOpLineageSync{}
+	}
+	return &AssetService{
+		repo:        repo,
+		lineageSync: lineageSync,
+	}
+}
+
+// CreateOrUpdateAsset creates a new asset or updates existing one
+// This is the SINGLE SOURCE OF TRUTH for asset creation
+// Returns: assetID, isNew, error
+func (s *AssetService) CreateOrUpdateAsset(ctx context.Context, asset *entity.Asset) (uuid.UUID, bool, error) {
+	// Generate stable ID if not provided
+	if asset.StableID == "" {
+		asset.StableID = s.generateStableID(asset)
+	}
+
+	// Check if asset already exists
+	existingAsset, err := s.repo.GetAssetByStableID(ctx, asset.StableID)
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("failed to check existing asset: %w", err)
+	}
+
+	var assetID uuid.UUID
+	var isNew bool
+
+	if existingAsset != nil {
+		// Update existing asset
+		assetID = existingAsset.ID
+		asset.ID = assetID
+
+		// Update metadata if needed (risk score, finding count, etc.)
+		// For now, we keep the existing asset and just return its ID
+		isNew = false
+
+		log.Printf("📦 Asset already exists: %s (ID: %s)", asset.Name, assetID)
+	} else {
+		// Create new asset
+		if asset.ID == uuid.Nil {
+			asset.ID = uuid.New()
+		}
+
+		if err := s.repo.CreateAsset(ctx, asset); err != nil {
+			return uuid.Nil, false, fmt.Errorf("failed to create asset: %w", err)
+		}
+
+		assetID = asset.ID
+		isNew = true
+
+		log.Printf("✅ Created new asset: %s (ID: %s)", asset.Name, assetID)
+	}
+
+	// Trigger lineage sync (async, non-blocking)
+	if s.lineageSync.IsAvailable() {
+		go func() {
+			// Use background context to avoid cancellation
+			if err := s.lineageSync.SyncAssetToNeo4j(context.Background(), assetID); err != nil {
+				// Log error but don't fail asset creation
+				log.Printf("⚠️  WARNING: Failed to sync asset %s to lineage: %v", assetID, err)
+			} else {
+				log.Printf("🔗 Lineage synced for asset: %s", assetID)
+			}
+		}()
+	}
+
+	return assetID, isNew, nil
+}
+
+// generateStableID creates a stable identifier from asset properties
+func (s *AssetService) generateStableID(asset *entity.Asset) string {
+	var identifier string
+
+	if asset.DataSource == "postgresql" || asset.DataSource == "mysql" {
+		// For databases: use data source + host + path (table name)
+		identifier = fmt.Sprintf("%s::%s::%s", asset.DataSource, asset.Host, asset.Path)
+	} else {
+		// For filesystem: use file path
+		identifier = asset.Path
+	}
+
+	// Normalize to lowercase to prevent duplicates on case-insensitive systems
+	normalizedPath := strings.ToLower(identifier)
+	hash := sha256.Sum256([]byte(normalizedPath))
+	return hex.EncodeToString(hash[:])
 }
 
 // GetAsset retrieves an asset by ID with full context
@@ -28,11 +119,14 @@ func (s *AssetService) GetAsset(ctx context.Context, id uuid.UUID) (*entity.Asse
 	return asset, nil
 }
 
-// UpdateAsset updates context fields
-func (s *AssetService) UpdateAsset(ctx context.Context, asset *entity.Asset) error {
-	// Not implemented fully in repo yet (only UpdateAssetRiskScore and CreateAsset exists)
-	// For V2 MVP, we focus on Get.
-	return nil
+// GetAssetByStableID retrieves asset by stable identifier
+func (s *AssetService) GetAssetByStableID(ctx context.Context, stableID string) (*entity.Asset, error) {
+	return s.repo.GetAssetByStableID(ctx, stableID)
+}
+
+// UpdateAssetStats updates finding count and risk score
+func (s *AssetService) UpdateAssetStats(ctx context.Context, assetID uuid.UUID, riskScore, findingCount int) error {
+	return s.repo.UpdateAssetStats(ctx, assetID, riskScore, findingCount)
 }
 
 // ListAssets returns a list of assets

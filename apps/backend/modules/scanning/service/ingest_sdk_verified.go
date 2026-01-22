@@ -78,20 +78,15 @@ func (s *IngestionService) processSingleSDKFinding(
 	scanRunID uuid.UUID,
 	vf *VerifiedFinding,
 ) error {
-	// 1. Get or create asset
+	// 1. Get or create asset using AssetManager
 	asset := adapter.MapToAsset(vf)
 
-	// Check if asset exists by stable_id
-	existingAsset, err := tx.GetAssetByStableID(ctx, asset.StableID)
-	if err == nil && existingAsset != nil {
-		// Asset exists, use its ID
-		asset.ID = existingAsset.ID
-	} else {
-		// Create new asset
-		if err := tx.CreateAsset(ctx, asset); err != nil {
-			return fmt.Errorf("failed to create asset: %w", err)
-		}
+	// Delegate to AssetManager (single source of truth)
+	assetID, _, err := s.assetManager.CreateOrUpdateAsset(ctx, asset)
+	if err != nil {
+		return fmt.Errorf("failed to create/update asset: %w", err)
 	}
+	asset.ID = assetID
 
 	// 2. Create finding
 	finding := adapter.MapToFinding(vf, scanRunID, asset.ID)
@@ -105,14 +100,8 @@ func (s *IngestionService) processSingleSDKFinding(
 		return fmt.Errorf("failed to create classification: %w", err)
 	}
 
-	// 4. Sync asset to Neo4j (3-level hierarchy: System → Asset → PII_Category)
-	// Note: This aggregates ALL findings for this asset, not individual findings
-	if s.semanticLineage != nil {
-		if err := s.semanticLineage.SyncAssetToNeo4j(ctx, asset.ID); err != nil {
-			// Log but don't fail the ingestion
-			fmt.Printf("Warning: Failed to sync asset to Neo4j: %v\n", err)
-		}
-	}
+	// Note: Lineage sync is now handled automatically by AssetService
+	// No need to call it here - loose coupling achieved!
 
 	return nil
 }

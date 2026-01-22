@@ -199,8 +199,8 @@ export default function CompliancePage() {
                             </h3>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 <CategoryBar label="Sensitive Personal Data" count={data.critical_exposure.total_findings} color={theme.colors.risk.critical} />
-                                <CategoryBar label="Personal Data" count={data.remediation_queue.length * 5} color={theme.colors.risk.high} /> {/* Simulated data for visual */}
-                                <CategoryBar label="Non-Personal Data" count={data.total_assets * 10} color={theme.colors.risk.low} />
+                                <CategoryBar label="Personal Data" count={data.remediation_queue.length} color={theme.colors.risk.high} />
+                                <CategoryBar label="Non-Personal Data" count={data.total_assets} color={theme.colors.risk.low} />
                             </div>
                         </div>
 
@@ -219,7 +219,7 @@ export default function CompliancePage() {
                                 <p>✅ Policy Engine: <strong>Active</strong></p>
                                 <p>✅ Consent Ledger: <strong>Synced</strong></p>
                                 <p style={{ marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${theme.colors.border.default}` }}>
-                                    Last audit completed: <strong>Today, 09:30 AM</strong>
+                                    Last audit completed: <strong>{new Date().toLocaleTimeString()}</strong>
                                 </p>
                             </div>
                         </div>

@@ -68,11 +68,12 @@ func (r *PostgresRepository) GetFindingByID(ctx context.Context, id uuid.UUID) (
 
 func (r *PostgresRepository) ListFindingsByScanRun(ctx context.Context, scanRunID uuid.UUID, limit, offset int) ([]*entity.Finding, error) {
 	query := `
-		SELECT id, scan_run_id, asset_id, pattern_id, pattern_name, matches, sample_text, 
-			severity, severity_description, confidence_score, context, created_at, updated_at
-		FROM findings 
-		WHERE scan_run_id = $1
-		ORDER BY created_at DESC
+		SELECT f.id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, 
+			f.severity, f.severity_description, f.confidence_score, f.context, f.created_at, f.updated_at
+		FROM findings f
+		LEFT JOIN classifications c ON f.id = c.finding_id
+		WHERE f.scan_run_id = $1 AND (c.classification_type IS NULL OR c.classification_type != 'Non-PII')
+		ORDER BY f.created_at DESC
 		LIMIT $2 OFFSET $3`
 
 	return r.scanFindings(ctx, query, scanRunID, limit, offset)
@@ -80,11 +81,12 @@ func (r *PostgresRepository) ListFindingsByScanRun(ctx context.Context, scanRunI
 
 func (r *PostgresRepository) ListFindingsByAsset(ctx context.Context, assetID uuid.UUID, limit, offset int) ([]*entity.Finding, error) {
 	query := `
-		SELECT id, scan_run_id, asset_id, pattern_id, pattern_name, matches, sample_text, 
-			severity, severity_description, confidence_score, context, created_at, updated_at
-		FROM findings 
-		WHERE asset_id = $1
-		ORDER BY created_at DESC
+		SELECT f.id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, 
+			f.severity, f.severity_description, f.confidence_score, f.context, f.created_at, f.updated_at
+		FROM findings f
+		LEFT JOIN classifications c ON f.id = c.finding_id
+		WHERE f.asset_id = $1 AND (c.classification_type IS NULL OR c.classification_type != 'Non-PII')
+		ORDER BY f.created_at DESC
 		LIMIT $2 OFFSET $3`
 
 	return r.scanFindings(ctx, query, assetID, limit, offset)

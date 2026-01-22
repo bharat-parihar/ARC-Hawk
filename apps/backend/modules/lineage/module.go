@@ -1,6 +1,7 @@
 package lineage
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/arc-platform/backend/modules/lineage/api"
@@ -29,7 +30,19 @@ func (m *LineageModule) Initialize(deps *interfaces.ModuleDependencies) error {
 
 	repo := persistence.NewPostgresRepository(deps.DB)
 
-	m.semanticLineageService = service.NewSemanticLineageService(deps.Neo4jRepo, repo)
+	// Get FindingsProvider from dependencies
+	var findingsProvider interfaces.FindingsProvider
+	if deps.FindingsProvider != nil {
+		findingsProvider = deps.FindingsProvider
+	} else {
+		return fmt.Errorf("FindingsProvider dependency is required for Lineage Module")
+	}
+
+	m.semanticLineageService = service.NewSemanticLineageService(
+		deps.Neo4jRepo,
+		repo,
+		findingsProvider,
+	)
 
 	m.graphHandler = api.NewGraphHandler(m.semanticLineageService)
 	m.lineageHandler = api.NewLineageHandlerV2(m.semanticLineageService)
@@ -54,6 +67,12 @@ func (m *LineageModule) RegisterRoutes(router *gin.RouterGroup) {
 func (m *LineageModule) Shutdown() error {
 	log.Printf("🔌 Shutting down Lineage Module...")
 	return nil
+}
+
+// GetSemanticLineageService returns the semantic lineage service for inter-module use
+// Returns as LineageSync interface for loose coupling
+func (m *LineageModule) GetSemanticLineageService() interfaces.LineageSync {
+	return m.semanticLineageService
 }
 
 func NewLineageModule() *LineageModule {

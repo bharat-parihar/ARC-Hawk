@@ -104,6 +104,15 @@ func (r *PostgresRepository) ListScanRuns(ctx context.Context, limit, offset int
 }
 
 func (r *PostgresRepository) UpdateScanRun(ctx context.Context, scanRun *entity.ScanRun) error {
+	existing, err := r.GetScanRunByID(ctx, scanRun.ID)
+	if err != nil {
+		return fmt.Errorf("scan run not found: %w", err)
+	}
+
+	if existing.Status == "completed" || existing.Status == "failed" {
+		return fmt.Errorf("scan run is immutable after completion (status: %s)", existing.Status)
+	}
+
 	metadataJSON, err := json.Marshal(scanRun.Metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
@@ -111,7 +120,7 @@ func (r *PostgresRepository) UpdateScanRun(ctx context.Context, scanRun *entity.
 
 	query := `
 		UPDATE scan_runs 
-		SET total_findings = $1, total_assets = $2, status = $3, metadata = $4
+		SET total_findings = $1, total_assets = $2, status = $3, metadata = $4, updated_at = NOW()
 		WHERE id = $5`
 
 	_, err = r.db.ExecContext(ctx, query,

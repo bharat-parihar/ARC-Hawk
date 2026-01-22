@@ -58,16 +58,11 @@ func (s *ScanOrchestrationService) ScanAllAssets(ctx context.Context) (*ScanAllS
 
 	fmt.Printf("🚀 Starting Scan All Assets...\n")
 
-	// STEP 1: Sync connections from connection.yml to PostgreSQL assets
-	// This ensures we have assets to scan even if DB was empty
-	fmt.Printf("🔄 Syncing connections from connection.yml to assets...\n")
-	connectionService := NewConnectionService(s.pgRepo)
-	if err := connectionService.SyncConnectionsToAssets(ctx); err != nil {
-		s.mu.Unlock()
-		return nil, fmt.Errorf("failed to sync connections: %w", err)
-	}
+	// NOTE: Connection sync removed - connections are now managed via database
+	// in the new architecture. Assets should already exist in DB from connection creation.
+	// This legacy "Scan All" flow will be replaced by Temporal workflows in Phase 3.
 
-	// STEP 2: Get all assets (now populated from connection.yml)
+	// Get all assets from database
 	assets, err := s.pgRepo.ListAssets(ctx, 10000, 0)
 	if err != nil {
 		s.mu.Unlock()

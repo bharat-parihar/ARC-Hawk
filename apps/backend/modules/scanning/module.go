@@ -1,6 +1,7 @@
 package scanning
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/arc-platform/backend/modules/scanning/api"
@@ -17,12 +18,14 @@ type ScanningModule struct {
 	classificationService        *service.ClassificationService
 	classificationSummaryService *service.ClassificationSummaryService
 	enrichmentService            *service.EnrichmentService
+	scanService                  *service.ScanService
 
 	// Handlers
 	ingestionHandler      *api.IngestionHandler
 	classificationHandler *api.ClassificationHandler
 	sdkIngestHandler      *api.SDKIngestHandler
 	scanTriggerHandler    *api.ScanTriggerHandler
+	scanStatusHandler     *api.ScanStatusHandler
 
 	// Dependencies
 	deps *interfaces.ModuleDependencies
@@ -42,20 +45,29 @@ func (m *ScanningModule) Initialize(deps *interfaces.ModuleDependencies) error {
 	// Create PostgreSQL repository
 	repo := persistence.NewPostgresRepository(deps.DB)
 
-	// Get lineage service from registry (if available)
-
 	// Initialize services
-	m.enrichmentService = service.NewEnrichmentService(repo)
+	m.enrichmentService = service.NewEnrichmentService(repo, nil)
 	m.classificationService = service.NewClassificationService(repo, deps.Config)
 	m.classificationSummaryService = service.NewClassificationSummaryService(repo)
 
-	// Ingestion service needs lineage service
-	// For now, pass nil and handle gracefully
+	// Create scan service for scan orchestration
+	m.scanService = service.NewScanService(repo)
+
+	// Get AssetManager from dependencies (injected by main.go)
+	var assetManager interfaces.AssetManager
+	if deps.AssetManager != nil {
+		assetManager = deps.AssetManager
+	} else {
+		log.Printf("⚠️  WARNING: AssetManager not available - this will cause errors")
+		return fmt.Errorf("AssetManager dependency is required for Scanning Module")
+	}
+
+	// Ingestion service now uses AssetManager instead of creating assets directly
 	m.ingestionService = service.NewIngestionService(
 		repo,
 		m.classificationService,
 		m.enrichmentService,
-		nil,
+		assetManager,
 	)
 
 	// Initialize handlers
@@ -65,7 +77,8 @@ func (m *ScanningModule) Initialize(deps *interfaces.ModuleDependencies) error {
 		m.classificationSummaryService,
 	)
 	m.sdkIngestHandler = api.NewSDKIngestHandler(m.ingestionService)
-	m.scanTriggerHandler = api.NewScanTriggerHandler()
+	m.scanTriggerHandler = api.NewScanTriggerHandler(m.scanService, deps.WebSocketService) // Wired real WebSocket service
+	m.scanStatusHandler = api.NewScanStatusHandler(m.scanService)
 
 	log.Printf("✅ Scanning & Classification Module initialized")
 	return nil
@@ -81,9 +94,13 @@ func (m *ScanningModule) RegisterRoutes(router *gin.RouterGroup) {
 		// Scan trigger
 		scans.POST("/trigger", m.scanTriggerHandler.TriggerScan)
 
+		// Scan status and details
+		scans.GET("/:id", m.scanStatusHandler.GetScan)
+		scans.GET("/:id/status", m.scanStatusHandler.GetScanStatus)
+
 		// Scan management
+		scans.GET("", m.scanStatusHandler.ListScans)
 		scans.GET("/latest", m.ingestionHandler.GetLatestScan)
-		scans.GET("/:id", m.ingestionHandler.GetScanStatus)
 		scans.DELETE("/clear", m.ingestionHandler.ClearScanData)
 	}
 

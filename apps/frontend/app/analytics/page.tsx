@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { theme, getRiskColor } from '@/design-system/theme';
 import Topbar from '@/components/Topbar';
 import Tooltip, { InfoIcon } from '@/components/Tooltip';
+import ErrorBanner from '@/components/ErrorBanner';
 
 interface PIIHeatmap {
     rows: HeatmapRow[];
@@ -37,24 +38,36 @@ export default function AnalyticsPage() {
     const [heatmap, setHeatmap] = useState<PIIHeatmap | null>(null);
     const [trend, setTrend] = useState<RiskTrend | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         fetchData();
     }, []);
 
     const fetchData = async () => {
+        setLoading(true);
+        setError(null);
+
         try {
             const [heatmapRes, trendRes] = await Promise.all([
                 fetch(`/api/v1/analytics/heatmap`),
                 fetch(`/api/v1/analytics/trends?days=30`)
             ]);
 
-            if (heatmapRes.ok && trendRes.ok) {
-                setHeatmap(await heatmapRes.json());
-                setTrend(await trendRes.json());
+            if (!heatmapRes.ok || !trendRes.ok) {
+                throw new Error('Failed to fetch analytics data');
             }
-        } catch (error) {
-            console.error('Failed to load analytics', error);
+
+            const [heatmapData, trendData] = await Promise.all([
+                heatmapRes.json(),
+                trendRes.json()
+            ]);
+
+            setHeatmap(heatmapData);
+            setTrend(trendData);
+        } catch (err: any) {
+            console.error('Failed to load analytics', err);
+            setError(err.message || 'Failed to load analytics data. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -66,6 +79,14 @@ export default function AnalyticsPage() {
         <div style={{ minHeight: '100vh', backgroundColor: theme.colors.background.primary }}>
             <Topbar />
             <div className="container" style={{ padding: '32px', maxWidth: '1600px', margin: '0 auto' }}>
+                {error && (
+                    <ErrorBanner
+                        message={error}
+                        severity="error"
+                        onRetry={fetchData}
+                        onDismiss={() => setError(null)}
+                    />
+                )}
                 <div style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'end' }}>
                     <div>
                         <h2 style={{ fontSize: '24px', fontWeight: 700, color: theme.colors.text.primary, marginBottom: '8px' }}>

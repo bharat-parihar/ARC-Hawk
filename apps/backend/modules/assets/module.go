@@ -32,7 +32,16 @@ func (m *AssetsModule) Initialize(deps *interfaces.ModuleDependencies) error {
 
 	repo := persistence.NewPostgresRepository(deps.DB)
 
-	m.assetService = service.NewAssetService(repo)
+	// Get lineage sync from dependencies (will be injected by main.go)
+	var lineageSync interfaces.LineageSync
+	if deps.LineageSync != nil {
+		lineageSync = deps.LineageSync
+	} else {
+		lineageSync = &interfaces.NoOpLineageSync{}
+		log.Printf("⚠️  LineageSync not available - using NoOp implementation")
+	}
+
+	m.assetService = service.NewAssetService(repo, lineageSync)
 	m.findingsService = service.NewFindingsService(repo)
 	m.datasetService = service.NewDatasetService(repo)
 
@@ -56,6 +65,16 @@ func (m *AssetsModule) RegisterRoutes(router *gin.RouterGroup) {
 func (m *AssetsModule) Shutdown() error {
 	log.Printf("🔌 Shutting down Assets Module...")
 	return nil
+}
+
+// GetAssetService returns the asset service for inter-module use
+func (m *AssetsModule) GetAssetService() *service.AssetService {
+	return m.assetService
+}
+
+// GetFindingsService returns the findings service for inter-module use
+func (m *AssetsModule) GetFindingsService() *service.FindingsService {
+	return m.findingsService
 }
 
 func NewAssetsModule() *AssetsModule {

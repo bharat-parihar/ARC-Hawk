@@ -27,6 +27,7 @@ def parse_args(args=None):
     parser = argparse.ArgumentParser(description='🦅 A powerful scanner to scan your Filesystem, S3, MySQL, PostgreSQL, MongoDB, Redis, Google Cloud Storage and Firebase storage for PII and sensitive data.')
     parser.add_argument('command', nargs='?', choices=data_sources_option, help='Command to execute')
     parser.add_argument('--connection', action='store', help='YAML Connection file path')
+    parser.add_argument('--config', action='store', help='JSON Scan config file path (from Go backend)')
     parser.add_argument('--connection-json', type=str, help='Connection details in JSON format, useful for passing connection info directly as CLI Input')
     parser.add_argument('--fingerprint', action='store', help='Override YAML fingerprint file path')
     parser.add_argument('--json', help='Save output to a json file')

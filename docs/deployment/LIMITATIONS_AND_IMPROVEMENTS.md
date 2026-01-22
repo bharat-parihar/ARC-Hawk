@@ -590,7 +590,7 @@ This document provides an honest assessment of the platform's current limitation
 ✅ Robust PII detection with mathematical validation  
 ✅ Scalable architecture (tested to 1M assets)  
 ✅ Clean separation of concerns (modular monolith)  
-✅ Production-ready (v2.1.0)  
+⚠️ Development/Early Access (v2.1.0)  
 ✅ Comprehensive documentation  
 
 ### Areas for Improvement
@@ -599,6 +599,8 @@ This document provides an honest assessment of the platform's current limitation
 ⚠️ English language only  
 ⚠️ Batch scanning only (no real-time)  
 ⚠️ Incomplete data masking  
+⚠️ Frontend uses mock data (real API integration in progress)  
+⚠️ SDK validators not fully integrated into scanner pipeline  
 
 ### Strategic Priorities
 1. **Security** (Authentication, RBAC, encryption)
@@ -607,7 +609,7 @@ This document provides an honest assessment of the platform's current limitation
 4. **Performance** (Distributed scanning, caching)
 5. **Enterprise Features** (Multi-tenancy, SSO)
 
-The platform is production-ready for **India-specific PII discovery and lineage tracking** with a clear roadmap for enterprise-grade features and global compliance support.
+The platform is in **development/early access** for India-specific PII discovery and lineage tracking. Several features are still under development before production use.
 
 ---
 

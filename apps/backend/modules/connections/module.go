@@ -1,10 +1,12 @@
 package connections
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/arc-platform/backend/modules/connections/api"
 	"github.com/arc-platform/backend/modules/connections/service"
+	"github.com/arc-platform/backend/modules/shared/infrastructure/encryption"
 	"github.com/arc-platform/backend/modules/shared/infrastructure/persistence"
 	"github.com/arc-platform/backend/modules/shared/interfaces"
 	"github.com/gin-gonic/gin"
@@ -12,9 +14,12 @@ import (
 
 type ConnectionsModule struct {
 	connectionService        *service.ConnectionService
+	connectionSyncService    *service.ConnectionSyncService
+	testConnectionService    *service.TestConnectionService
 	scanOrchestrationService *service.ScanOrchestrationService
 
 	connectionHandler        *api.ConnectionHandler
+	connectionSyncHandler    *api.ConnectionSyncHandler
 	scanOrchestrationHandler *api.ScanOrchestrationHandler
 
 	deps *interfaces.ModuleDependencies
@@ -24,25 +29,50 @@ func (m *ConnectionsModule) Name() string {
 	return "connections"
 }
 
+// Initialize initializes the connections module
 func (m *ConnectionsModule) Initialize(deps *interfaces.ModuleDependencies) error {
-	m.deps = deps
-	log.Printf("🔌 Initializing Connections Module...")
+	m.deps = deps // Keep this line as it's part of the original method's setup
+	log.Println("Initializing Connections Module...")
 
-	repo := persistence.NewPostgresRepository(deps.DB)
+	// Initialize encryption service
+	encryptionService, err := encryption.NewEncryptionService()
+	if err != nil {
+		return fmt.Errorf("failed to initialize encryption service: %w", err)
+	}
 
-	m.connectionService = service.NewConnectionService(repo)
-	m.scanOrchestrationService = service.NewScanOrchestrationService(repo)
+	// Initialize PostgreSQL repository
+	pgRepo := persistence.NewPostgresRepository(deps.DB)
 
-	m.connectionHandler = api.NewConnectionHandler(m.connectionService)
+	// Initialize connection service with encryption
+	m.connectionService = service.NewConnectionService(pgRepo, encryptionService)
+
+	// Initialize connection sync service
+	m.connectionSyncService = service.NewConnectionSyncService(pgRepo, encryptionService)
+
+	// Initialize test connection service
+	m.testConnectionService = service.NewTestConnectionService(pgRepo, encryptionService)
+
+	// Initialize scan orchestration service
+	m.scanOrchestrationService = service.NewScanOrchestrationService(pgRepo)
+
+	// Initialize handlers
+	m.connectionHandler = api.NewConnectionHandler(m.connectionService, m.connectionSyncService, m.testConnectionService)
+	m.connectionSyncHandler = api.NewConnectionSyncHandler(m.connectionSyncService)
 	m.scanOrchestrationHandler = api.NewScanOrchestrationHandler(m.scanOrchestrationService)
 
-	log.Printf("✅ Connections Module initialized")
+	log.Println("✅ Connections Module initialized")
 	return nil
 }
 
 func (m *ConnectionsModule) RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("/connections", m.connectionHandler.AddConnection)
 	router.GET("/connections", m.connectionHandler.GetConnections)
+	router.POST("/connections/test", m.connectionHandler.TestConnection)
+	router.POST("/connections/:id/test", m.connectionHandler.TestConnectionByID)
+
+	// Connection sync routes
+	router.POST("/connections/sync", m.connectionSyncHandler.SyncToScanner)
+	router.GET("/connections/sync/validate", m.connectionSyncHandler.ValidateSync)
 
 	scans := router.Group("/scans")
 	{

@@ -340,7 +340,7 @@ export default function PosturePage() {
                                 No Scans Yet
                             </div>
                             <div style={{ fontSize: '14px', color: colors.text.secondary, marginBottom: '24px' }}>
-                                Click "Run New Scan" to start tracking your security posture
+                                Click Run New Scan to start tracking your security posture
                             </div>
                         </div>
                     ) : (

@@ -3,12 +3,12 @@ from google.cloud import storage
 from rich.console import Console
 from hawk_scanner.internals import system
 from hawk_scanner.internals.binary_detection import is_text_file, get_binary_file_stats
+from hawk_scanner.internals.validation_integration import validate_findings
 import os
 import concurrent.futures
 import time
 
 def process_file(args, file_path, key, results):
-    # NEW: Skip binary files to prevent null byte issues
     if not is_text_file(file_path):
         if hasattr(args, 'verbose') and args.verbose:
             system.print_info(args, f"Skipped binary file: {file_path}")
@@ -17,17 +17,21 @@ def process_file(args, file_path, key, results):
     matches = system.read_match_strings(args, file_path, 'fs')
     file_data = system.getFileData(file_path)
     if matches:
-        for match in matches:
-            results.append({
-                'host': 'This PC',
-                'file_path': file_path,
-                'pattern_name': match['pattern_name'],
-                'matches': match['matches'],
-                'sample_text': match['sample_text'],
-                'profile': key,
-                'data_source': 'fs',
-                'file_data': file_data
-            })
+        validated_matches = validate_findings(matches, args)
+        if validated_matches:
+            for match in validated_matches:
+                results.append({
+                    'host': 'This PC',
+                    'file_path': file_path,
+                    'pattern_name': match['pattern_name'],
+                    'matches': match['matches'],
+                    'sample_text': match.get('sample_text', ''),
+                    'profile': key,
+                    'data_source': 'fs',
+                    'file_data': file_data,
+                    'validation_method': match.get('validation_method', {}),
+                    'validated': True
+                })
 
 def execute(args):
     results = []

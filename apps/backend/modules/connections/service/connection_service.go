@@ -3,198 +3,89 @@ package service
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"sync"
 
 	"github.com/arc-platform/backend/modules/shared/domain/entity"
+	"github.com/arc-platform/backend/modules/shared/infrastructure/encryption"
 	"github.com/arc-platform/backend/modules/shared/infrastructure/persistence"
 	"github.com/google/uuid"
-	"gopkg.in/yaml.v3"
 )
 
+// ConnectionService manages data source connections
 type ConnectionService struct {
-	configPath string
 	pgRepo     *persistence.PostgresRepository
-	mu         sync.Mutex
+	encryption *encryption.EncryptionService
 }
 
-func NewConnectionService(pgRepo *persistence.PostgresRepository) *ConnectionService {
-	// Relative path from apps/backend to apps/scanner/config/connection.yml
+// NewConnectionService creates a new connection service
+func NewConnectionService(pgRepo *persistence.PostgresRepository, enc *encryption.EncryptionService) *ConnectionService {
 	return &ConnectionService{
-		configPath: "../scanner/config/connection.yml",
 		pgRepo:     pgRepo,
+		encryption: enc,
 	}
 }
 
-type ConnectionConfig struct {
-	Sources map[string]map[string]interface{} `yaml:"sources"`
+// AddConnection creates a new connection with encrypted credentials
+func (s *ConnectionService) AddConnection(ctx context.Context, sourceType, profileName string, config map[string]interface{}, createdBy string) (*entity.Connection, error) {
+	// 1. Encrypt config
+	configEncrypted, err := s.encryption.Encrypt(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt config: %w", err)
+	}
+
+	// 2. Create connection entity
+	conn := &entity.Connection{
+		ID:              uuid.New(),
+		SourceType:      sourceType,
+		ProfileName:     profileName,
+		ConfigEncrypted: configEncrypted,
+		CreatedBy:       createdBy,
+	}
+
+	// 3. Store in database
+	if err := s.pgRepo.CreateConnection(ctx, conn); err != nil {
+		return nil, fmt.Errorf("failed to create connection: %w", err)
+	}
+
+	// 4. TODO: Trigger async validation (Phase 3 - Temporal workflow)
+
+	return conn, nil
 }
 
-// AddConnection appends a new connection configuration to connection.yml
-func (s *ConnectionService) AddConnection(sourceType, profileName string, config map[string]interface{}) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Read existing file
-	data, err := ioutil.ReadFile(s.configPath)
-	if err != nil {
-		return fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	var root ConnectionConfig
-	if err := yaml.Unmarshal(data, &root); err != nil {
-		return fmt.Errorf("failed to parse yaml: %w", err)
-	}
-
-	// Initialize maps if nil
-	if root.Sources == nil {
-		root.Sources = make(map[string]map[string]interface{})
-	}
-
-	if root.Sources[sourceType] == nil {
-		root.Sources[sourceType] = make(map[string]interface{})
-	}
-
-	// Add new config
-	root.Sources[sourceType][profileName] = config
-
-	// Write back to file
-	newData, err := yaml.Marshal(&root)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	if err := ioutil.WriteFile(s.configPath, newData, 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	return nil
+// GetConnections retrieves all connections (without decrypted config for security)
+func (s *ConnectionService) GetConnections(ctx context.Context) ([]*entity.Connection, error) {
+	return s.pgRepo.ListConnections(ctx)
 }
 
-// GetConnections returns the current connection configuration
-func (s *ConnectionService) GetConnections() (*ConnectionConfig, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	data, err := ioutil.ReadFile(s.configPath)
+// GetConnectionWithConfig retrieves a connection by ID with decrypted config
+// This should only be used internally, never exposed via API
+func (s *ConnectionService) GetConnectionWithConfig(ctx context.Context, id uuid.UUID) (*entity.Connection, error) {
+	conn, err := s.pgRepo.GetConnection(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		return nil, err
 	}
 
-	var root ConnectionConfig
-	if err := yaml.Unmarshal(data, &root); err != nil {
-		return nil, fmt.Errorf("failed to parse yaml: %w", err)
+	// Decrypt config
+	var config map[string]interface{}
+	if err := s.encryption.Decrypt(conn.ConfigEncrypted, &config); err != nil {
+		return nil, fmt.Errorf("failed to decrypt config: %w", err)
 	}
+	conn.Config = config
 
-	return &root, nil
+	return conn, nil
 }
 
-// SyncConnectionsToAssets creates or updates assets in PostgreSQL from connection.yml
-func (s *ConnectionService) SyncConnectionsToAssets(ctx context.Context) error {
-	// Note: No mutex lock here - caller (scan orchestration) manages its own locking
+// GetConnectionByProfile retrieves a connection by source type and profile name
+func (s *ConnectionService) GetConnectionByProfile(ctx context.Context, sourceType, profileName string) (*entity.Connection, error) {
+	return s.pgRepo.GetConnectionByProfile(ctx, sourceType, profileName)
+}
 
-	config, err := s.GetConnections()
-	if err != nil {
-		return fmt.Errorf("failed to get connections: %w", err)
-	}
+// DeleteConnection deletes a connection by ID
+func (s *ConnectionService) DeleteConnection(ctx context.Context, id uuid.UUID) error {
+	return s.pgRepo.DeleteConnection(ctx, id)
+}
 
-	fmt.Printf("🔄 Syncing connections to assets...\n")
-
-	// Process filesystem connections
-	if fsConnections, ok := config.Sources["fs"]; ok {
-		for profileName, configData := range fsConnections {
-			configMap, ok := configData.(map[string]interface{})
-			if !ok {
-				fmt.Printf("⚠️  Skipping invalid fs config: %s\n", profileName)
-				continue
-			}
-
-			path, _ := configMap["path"].(string)
-			if path == "" {
-				fmt.Printf("⚠️  Skipping fs connection without path: %s\n", profileName)
-				continue
-			}
-
-			// Create stable ID from profile name
-			stableID := fmt.Sprintf("fs_%s", profileName)
-
-			// Check if asset exists
-			existingAsset, err := s.pgRepo.GetAssetByStableID(ctx, stableID)
-			if err == nil && existingAsset != nil {
-				fmt.Printf("✅ Asset already exists: %s\n", profileName)
-				continue
-			}
-
-			// Create new asset
-			asset := &entity.Asset{
-				ID:           uuid.New(),
-				StableID:     stableID,
-				Name:         profileName,
-				AssetType:    "filesystem",
-				Path:         path,
-				DataSource:   "local",
-				Host:         "localhost",
-				Environment:  "production",
-				SourceSystem: "filesystem",
-			}
-
-			if err := s.pgRepo.CreateAsset(ctx, asset); err != nil {
-				fmt.Printf("❌ Failed to create asset %s: %v\n", profileName, err)
-				continue
-			}
-
-			fmt.Printf("✅ Created asset: %s (path: %s)\n", profileName, path)
-		}
-	}
-
-	// Process PostgreSQL connections
-	if pgConnections, ok := config.Sources["postgresql"]; ok {
-		for profileName, configData := range pgConnections {
-			configMap, ok := configData.(map[string]interface{})
-			if !ok {
-				fmt.Printf("⚠️  Skipping invalid postgresql config: %s\n", profileName)
-				continue
-			}
-
-			host, _ := configMap["host"].(string)
-			database, _ := configMap["database"].(string)
-			if host == "" || database == "" {
-				fmt.Printf("⚠️  Skipping postgresql connection without host/database: %s\n", profileName)
-				continue
-			}
-
-			// Create stable ID from profile name
-			stableID := fmt.Sprintf("pg_%s", profileName)
-
-			// Check if asset exists
-			existingAsset, err := s.pgRepo.GetAssetByStableID(ctx, stableID)
-			if err == nil && existingAsset != nil {
-				fmt.Printf("✅ Asset already exists: %s\n", profileName)
-				continue
-			}
-
-			// Create new asset
-			asset := &entity.Asset{
-				ID:           uuid.New(),
-				StableID:     stableID,
-				Name:         profileName,
-				AssetType:    "database",
-				Path:         database,
-				DataSource:   "postgresql",
-				Host:         host,
-				Environment:  "production",
-				SourceSystem: "postgresql",
-			}
-
-			if err := s.pgRepo.CreateAsset(ctx, asset); err != nil {
-				fmt.Printf("❌ Failed to create asset %s: %v\n", profileName, err)
-				continue
-			}
-
-			fmt.Printf("✅ Created asset: %s (host: %s, db: %s)\n", profileName, host, database)
-		}
-	}
-
-	fmt.Printf("✅ Connection sync complete\n")
-	return nil
+// UpdateValidationStatus updates the validation status of a connection
+// This will be used by the validation Temporal workflow in Phase 3
+func (s *ConnectionService) UpdateValidationStatus(ctx context.Context, id uuid.UUID, status string, validationError *string) error {
+	return s.pgRepo.UpdateConnectionValidation(ctx, id, status, validationError)
 }

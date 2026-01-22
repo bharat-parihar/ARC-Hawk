@@ -1,0 +1,76 @@
+log:
+  stdout: true
+  level: info
+
+persistence:
+  numHistoryShards: 1
+  defaultStore: default
+  visibilityStore: visibility
+  datastores:
+    default:
+      sql:
+        pluginName: postgres
+        connectAddr: postgres:5432
+        connectProtocol: tcp
+        userName: postgres
+        password: postgres
+        databaseName: temporal
+        maxConns: 20
+        maxConnLifetime: 1h
+    visibility:
+      sql:
+        pluginName: postgres
+        connectAddr: postgres:5432
+        connectProtocol: tcp
+        userName: postgres
+        password: postgres
+        databaseName: temporal_visibility
+        maxConns: 20
+        maxConnLifetime: 1h
+
+global:
+  membership:
+    broadcastAddress: 172.28.0.13
+  pProf:
+    port: 7933
+  metrics:
+    statsd:
+      hostPort: "127.0.0.1:8125"
+      prefix: "temporal"
+
+services:
+  frontend:
+    rpc:
+      grpcPort: 7233
+      membershipPort: 6933
+    metrics:
+      statsd:
+        hostPort: "127.0.0.1:8125"
+        prefix: "temporal.frontend"
+
+  history:
+    rpc:
+      grpcPort: 7234
+      membershipPort: 6934
+    metrics:
+      statsd:
+        hostPort: "127.0.0.1:8125"
+        prefix: "temporal.history"
+
+  matching:
+    rpc:
+      grpcPort: 7235
+      membershipPort: 6935
+    metrics:
+      statsd:
+        hostPort: "127.0.0.1:8125"
+        prefix: "temporal.matching"
+
+  worker:
+    rpc:
+      grpcPort: 7236
+      membershipPort: 6936
+    metrics:
+      statsd:
+        hostPort: "127.0.0.1:8125"
+        prefix: "temporal.worker"
