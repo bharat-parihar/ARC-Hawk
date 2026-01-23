@@ -194,7 +194,8 @@ node_modules/
 .turbo/
 
 # Sensitive configs
-apps/scanner/config/connection.yml
+apps/scanner/config/*.yml
+!apps/scanner/config/config.example.yml
 connection.yml
 
 # Compiled Binaries
