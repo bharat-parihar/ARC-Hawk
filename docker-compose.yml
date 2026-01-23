@@ -138,6 +138,7 @@ services:
       - PRESIDIO_ADDR=presidio-analyzer:3000
       - TEMPORAL_HOST_PORT=temporal:7233
       - ENCRYPTION_KEY=12345678901234567890123456789012
+      - SCANNER_URL=http://scanner:5002
     depends_on:
       postgres:
         condition: service_healthy
@@ -160,3 +161,27 @@ services:
       - NEXT_PUBLIC_API_URL=http://backend:8080/api/v1
     depends_on:
       - backend
+
+  scanner:
+    build:
+      context: ./apps/scanner
+      dockerfile: Dockerfile
+    container_name: arc-platform-scanner
+    networks:
+      arc-platform-internal:
+        ipv4_address: 172.28.0.40
+    ports:
+      - "5002:5002"
+    environment:
+      - BACKEND_URL=http://backend:8080
+      - PORT=5002
+    volumes:
+      - ./apps/scanner/config:/app/config:ro
+      - /tmp:/tmp
+    depends_on:
+      - backend
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5002/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3

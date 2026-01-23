@@ -17,38 +17,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from sdk.validators import validate_aadhaar, validate_credit_card, validate_pan
-from sdk.validators import validate_email, validate_indian_phone, validate_upi
-from sdk.validators import validate_ifsc, validate_bank_account
-from sdk.validators import validate_indian_passport, validate_voter_id, validate_driving_license
+from sdk.validators import validate_email, IndianPhoneValidator
+from sdk.validators import IndianPassportValidator
 
 
 VALIDATOR_MAP = {
-    'aadhaar': validate_aadhaar,
-    'adhar': validate_aadhaar,
-    'in_aadhaar': validate_aadhaar,
-    'pan': validate_pan,
-    'in_pan': validate_pan,
-    'credit_card': validate_credit_card,
-    'creditcard': validate_credit_card,
-    'in_credit_card': validate_credit_card,
-    'email': validate_email,
-    'email_address': validate_email,
-    'phone': validate_indian_phone,
-    'mobile': validate_indian_phone,
-    'in_phone': validate_indian_phone,
-    'upi': validate_upi,
-    'in_upi': validate_upi,
-    'ifsc': validate_ifsc,
-    'in_ifsc': validate_ifsc,
-    'bank_account': validate_bank_account,
-    'in_bank_account': validate_bank_account,
-    'passport': validate_indian_passport,
-    'in_passport': validate_indian_passport,
-    'voter_id': validate_voter_id,
-    'in_voter_id': validate_voter_id,
-    'driving_license': validate_driving_license,
-    'drivinglicense': validate_driving_license,
-    'in_driving_license': validate_driving_license,
+    "IN_AADHAAR": validate_aadhaar,
+    "IN_PAN": validate_pan,
+    "CREDIT_CARD": validate_credit_card,
+    "EMAIL_ADDRESS": validate_email,
+    "IN_PHONE": IndianPhoneValidator.validate,
+    "IN_PASSPORT": IndianPassportValidator.validate,
 }
 
 
@@ -67,10 +46,45 @@ PII_TYPE_PATTERNS = {
 }
 
 
+# Strict PII Scope - Only these types are allowed
+ALLOWED_PII_TYPES = {
+    'IN_AADHAAR',
+    'IN_PAN',
+    'CREDIT_CARD',
+    'EMAIL_ADDRESS',
+    'IN_PHONE',
+    'IN_PASSPORT'
+}
+
+# Mapping from fingerprint.yml pattern names (uppercase) to Validator Keys
+PATTERN_MAPPING = {
+    'AADHAR': 'IN_AADHAAR', # Common misspelling handled
+    'AADHAAR': 'IN_AADHAAR',
+    'PAN': 'IN_PAN',
+    'PASSPORT_INDIA': 'IN_PASSPORT',
+    'PHONE_INDIA': 'IN_PHONE',
+    'EMAIL': 'EMAIL_ADDRESS',
+    'CREDIT_CARD_VISA': 'CREDIT_CARD',
+    'CREDIT_CARD_MC': 'CREDIT_CARD',
+    'CREDIT_CARD_AMEX': 'CREDIT_CARD',
+    'CREDIT_CARD_DISCOVER': 'CREDIT_CARD'
+}
+
 def get_validator_for_pattern(pattern_name: str):
     """Get the validator function for a pattern name."""
-    pattern_lower = pattern_name.lower()
-    return VALIDATOR_MAP.get(pattern_lower)
+    # Fix: Validator map keys are uppercase
+    pattern_upper = pattern_name.upper()
+    
+    # Normalize pattern name using mapping if exists
+    normalized_name = PATTERN_MAPPING.get(pattern_upper, pattern_upper)
+    
+    return VALIDATOR_MAP.get(normalized_name)
+
+def get_normalized_name(pattern_name: str) -> str:
+    """Get normalized pattern name for scope checking"""
+    pattern_upper = pattern_name.upper()
+    return PATTERN_MAPPING.get(pattern_upper, pattern_upper)
+
 
 
 def validate_match(value: str, pattern_name: str) -> tuple[bool, str]:
@@ -84,18 +98,31 @@ def validate_match(value: str, pattern_name: str) -> tuple[bool, str]:
     Returns:
         Tuple of (is_valid, validation_method)
     """
+    # 1. SCOPE CHECK: Enforce strict PII locking
+    normalized_name = get_normalized_name(pattern_name)
+    
+    if normalized_name not in ALLOWED_PII_TYPES:
+        # Check if original was allowed (just in case)
+        if pattern_name.upper() not in ALLOWED_PII_TYPES:
+             return False, 'scope_rejected'
+
     validator = get_validator_for_pattern(pattern_name)
     
+    # 2. VALIDATOR CHECK: Fail closed if no validator exists
     if validator is None:
-        return True, 'no_validator'
+        # In strict mode, we should reject. 
+        # But if it's in ALLOWED_PII_TYPES but missing validator map entry, that's a bug or config issue.
+        # Given we have validators for all ALLOWED types above, this is safe.
+        return False, 'no_validator'
     
     try:
         is_valid = validator(value)
         method = validator.__name__
         return is_valid, method
     except Exception as e:
+        # 3. EXCEPTION HANDLING: Fail closed
         print(f"[VALIDATION ERROR] {pattern_name}: {e}")
-        return True, 'error'
+        return False, 'error'
 
 
 def validate_findings(findings: List[Dict[str, Any]], args=None, strict_mode: bool = False) -> List[Dict[str, Any]]:

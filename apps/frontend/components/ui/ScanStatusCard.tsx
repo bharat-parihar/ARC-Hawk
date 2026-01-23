@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, CheckCircle, Play, Pause, AlertCircle } from 'lucide-react';
 
@@ -16,11 +16,67 @@ const scanStatuses = {
 type ScanStatus = 'idle' | 'running' | 'completed' | 'failed';
 
 export default function ScanStatusCard({ scanId }: ScanStatusCardProps) {
-    // In production, this would come from real-time API
-    const status: ScanStatus = scanId ? 'completed' : 'idle';
-    const startTime = scanId ? new Date(Date.now() - 1000 * 60 * 15) : null; // 15 minutes ago
-    const endTime = status === 'completed' && scanId ? new Date(Date.now() - 1000 * 60 * 2) : null; // 2 minutes ago
-    const progress = status === 'completed' ? 100 : 0;
+    const [scanData, setScanData] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [cancelling, setCancelling] = useState(false);
+
+    useEffect(() => {
+        if (scanId) {
+            fetchScanData();
+            // Poll for updates every 5 seconds if scan is running
+            const interval = setInterval(() => {
+                if (scanData?.status === 'running') {
+                    fetchScanData();
+                }
+            }, 5000);
+            return () => clearInterval(interval);
+        } else {
+            setLoading(false);
+        }
+    }, [scanId, scanData?.status]);
+
+    const fetchScanData = async () => {
+        try {
+            const res = await fetch(`/api/v1/scans/${scanId}/status`);
+            if (res.ok) {
+                const data = await res.json();
+                setScanData(data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch scan data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCancelScan = async () => {
+        if (!scanId || cancelling) return;
+
+        setCancelling(true);
+        try {
+            const res = await fetch(`/api/v1/scans/${scanId}/cancel`, {
+                method: 'POST',
+            });
+            if (res.ok) {
+                await fetchScanData(); // Refresh scan data
+            }
+        } catch (error) {
+            console.error('Failed to cancel scan:', error);
+        } finally {
+            setCancelling(false);
+        }
+    };
+
+    // Determine status from scan data or default to idle
+    const status: ScanStatus = scanData?.status === 'completed' ? 'completed' :
+        scanData?.status === 'running' ? 'running' :
+            scanData?.status === 'failed' ? 'failed' :
+                scanData?.status === 'cancelled' ? 'failed' :
+                    'idle';
+
+    const startTime = scanData?.created_at ? new Date(scanData.created_at) : null;
+    const endTime = scanData?.completed_at ? new Date(scanData.completed_at) : null;
+    const progress = scanData?.progress !== undefined ? scanData.progress : (status === 'completed' ? 100 : 0);
 
     const StatusIcon = scanStatuses[status as keyof typeof scanStatuses].icon;
 
@@ -30,6 +86,10 @@ export default function ScanStatusCard({ scanId }: ScanStatusCardProps) {
                 return 'System ready. No active scans running.';
             case 'completed':
                 return 'Scan completed. Findings are ready for review.';
+            case 'running':
+                return 'Scan in progress. Discovering PII across your data sources.';
+            case 'failed':
+                return scanData?.status === 'cancelled' ? 'Scan was cancelled.' : 'Scan failed. Please check logs for details.';
         }
     };
 
@@ -37,6 +97,8 @@ export default function ScanStatusCard({ scanId }: ScanStatusCardProps) {
         switch (status) {
             case 'idle': return 'text-slate-400';
             case 'completed': return 'text-emerald-400';
+            case 'running': return 'text-blue-400';
+            case 'failed': return 'text-red-400';
         }
         return 'text-slate-400';
     };
@@ -53,7 +115,12 @@ export default function ScanStatusCard({ scanId }: ScanStatusCardProps) {
                 return [
                     { label: 'Review Findings', description: 'Examine discovered PII instances', priority: 'high' as const },
                     { label: 'Generate Report', description: 'Create compliance documentation', priority: 'medium' as const },
-                    { label: 'Generate Report', description: 'Create compliance documentation', priority: 'medium' as const }
+                    { label: 'Start New Scan', description: 'Scan additional data sources', priority: 'medium' as const }
+                ];
+            case 'running':
+                return [
+                    { label: 'Monitor Progress', description: 'Track scan execution in real-time', priority: 'high' as const },
+                    { label: 'View Partial Results', description: 'See findings as they are discovered', priority: 'medium' as const },
                 ];
         }
         return [];
@@ -104,7 +171,7 @@ export default function ScanStatusCard({ scanId }: ScanStatusCardProps) {
                         initial={{ width: 0 }}
                         animate={{ width: `${progress}%` }}
                         transition={{ duration: 1, ease: "easeOut" }}
-                        className={`h-2 rounded-full ${status === 'completed' ? 'bg-emerald-500' : 'bg-slate-500'
+                        className={`h-2 rounded-full ${status === 'completed' ? 'bg-emerald-500' : status === 'running' ? 'bg-blue-500' : 'bg-slate-500'
                             }`}
                     />
                 </div>
@@ -143,7 +210,7 @@ export default function ScanStatusCard({ scanId }: ScanStatusCardProps) {
             </div>
 
             {/* Recommended Actions */}
-            <div className="mb-6">
+            <div className="mb-6 mt-6">
                 <h4 className="text-sm font-medium text-slate-300 mb-3">Recommended Next Steps</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {recommendedActions.map((action, index) => (
@@ -153,10 +220,10 @@ export default function ScanStatusCard({ scanId }: ScanStatusCardProps) {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: index * 0.1 }}
                             className={`p-3 rounded-lg border transition-all duration-200 text-left group ${action.priority === 'high'
-                                    ? 'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20 hover:border-blue-500/50'
-                                    : action.priority === 'medium'
-                                        ? 'bg-slate-700/50 border-slate-600/50 hover:bg-slate-600/50 hover:border-slate-500/50'
-                                        : 'bg-slate-800/50 border-slate-700/50 hover:bg-slate-700/50 hover:border-slate-600/50'
+                                ? 'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20 hover:border-blue-500/50'
+                                : action.priority === 'medium'
+                                    ? 'bg-slate-700/50 border-slate-600/50 hover:bg-slate-600/50 hover:border-slate-500/50'
+                                    : 'bg-slate-800/50 border-slate-700/50 hover:bg-slate-700/50 hover:border-slate-600/50'
                                 }`}
                             title={action.description}
                         >
@@ -181,12 +248,23 @@ export default function ScanStatusCard({ scanId }: ScanStatusCardProps) {
 
             {/* Action Buttons */}
             <div className="flex gap-3">
+                {status === 'running' && (
+                    <button
+                        onClick={handleCancelScan}
+                        disabled={cancelling}
+                        className="flex-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 hover:text-red-300 px-4 py-2.5 rounded-lg transition-all duration-200 border border-red-600/50 hover:border-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {cancelling ? 'Cancelling...' : 'Cancel Scan'}
+                    </button>
+                )}
                 <button className="flex-1 bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white px-4 py-2.5 rounded-lg transition-all duration-200 border border-slate-600/50 hover:border-slate-500/50">
                     View Details
                 </button>
-                <button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl">
-                    {status === 'completed' ? 'New Scan' : status === 'idle' ? 'Start Scan' : 'Manage'}
-                </button>
+                {status !== 'running' && (
+                    <button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl">
+                        {status === 'completed' ? 'New Scan' : status === 'idle' ? 'Start Scan' : 'Retry Scan'}
+                    </button>
+                )}
             </div>
         </motion.div>
     );

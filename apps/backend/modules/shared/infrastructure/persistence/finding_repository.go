@@ -22,32 +22,44 @@ func (r *PostgresRepository) CreateFinding(ctx context.Context, finding *entity.
 		return fmt.Errorf("failed to marshal context: %w", err)
 	}
 
+	// Enforce Tenant ID
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return err
+	}
+	finding.TenantID = tenantID
+
 	query := `
-		INSERT INTO findings (id, scan_run_id, asset_id, pattern_id, pattern_name, 
-			matches, sample_text, severity, severity_description, confidence_score, context)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO findings (id, tenant_id, scan_run_id, asset_id, pattern_id, pattern_name, 
+			matches, sample_text, severity, severity_description, confidence_score, environment, context)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING created_at, updated_at`
 
 	return r.db.QueryRowContext(ctx, query,
-		finding.ID, finding.ScanRunID, finding.AssetID, finding.PatternID, finding.PatternName,
+		finding.ID, finding.TenantID, finding.ScanRunID, finding.AssetID, finding.PatternID, finding.PatternName,
 		pq.Array(finding.Matches), finding.SampleText, finding.Severity, finding.SeverityDescription,
-		finding.ConfidenceScore, contextJSON,
+		finding.ConfidenceScore, finding.Environment, contextJSON,
 	).Scan(&finding.CreatedAt, &finding.UpdatedAt)
 }
 
 func (r *PostgresRepository) GetFindingByID(ctx context.Context, id uuid.UUID) (*entity.Finding, error) {
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
-		SELECT id, scan_run_id, asset_id, pattern_id, pattern_name, matches, sample_text, 
-			severity, severity_description, confidence_score, context, created_at, updated_at
-		FROM findings WHERE id = $1`
+		SELECT id, tenant_id, scan_run_id, asset_id, pattern_id, pattern_name, matches, sample_text, 
+			severity, severity_description, confidence_score, environment, context, created_at, updated_at
+		FROM findings WHERE id = $1 AND tenant_id = $2`
 
 	finding := &entity.Finding{}
 	var contextJSON []byte
 
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&finding.ID, &finding.ScanRunID, &finding.AssetID, &finding.PatternID, &finding.PatternName,
+	err = r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
+		&finding.ID, &finding.TenantID, &finding.ScanRunID, &finding.AssetID, &finding.PatternID, &finding.PatternName,
 		pq.Array(&finding.Matches), &finding.SampleText, &finding.Severity, &finding.SeverityDescription,
-		&finding.ConfidenceScore, &contextJSON, &finding.CreatedAt, &finding.UpdatedAt,
+		&finding.ConfidenceScore, &finding.Environment, &contextJSON, &finding.CreatedAt, &finding.UpdatedAt,
 	)
 
 	if err != nil {
@@ -67,42 +79,57 @@ func (r *PostgresRepository) GetFindingByID(ctx context.Context, id uuid.UUID) (
 }
 
 func (r *PostgresRepository) ListFindingsByScanRun(ctx context.Context, scanRunID uuid.UUID, limit, offset int) ([]*entity.Finding, error) {
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
-		SELECT f.id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, 
-			f.severity, f.severity_description, f.confidence_score, f.context, f.created_at, f.updated_at
+		SELECT f.id, f.tenant_id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, 
+			f.severity, f.severity_description, f.confidence_score, f.environment, f.context, f.created_at, f.updated_at
 		FROM findings f
 		LEFT JOIN classifications c ON f.id = c.finding_id
-		WHERE f.scan_run_id = $1 AND (c.classification_type IS NULL OR c.classification_type != 'Non-PII')
+		WHERE f.scan_run_id = $1 AND f.tenant_id = $2 AND (c.classification_type IS NULL OR c.classification_type != 'Non-PII')
 		ORDER BY f.created_at DESC
-		LIMIT $2 OFFSET $3`
+		LIMIT $3 OFFSET $4`
 
-	return r.scanFindings(ctx, query, scanRunID, limit, offset)
+	return r.scanFindings(ctx, query, scanRunID, tenantID, limit, offset)
 }
 
 func (r *PostgresRepository) ListFindingsByAsset(ctx context.Context, assetID uuid.UUID, limit, offset int) ([]*entity.Finding, error) {
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
-		SELECT f.id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, 
-			f.severity, f.severity_description, f.confidence_score, f.context, f.created_at, f.updated_at
+		SELECT f.id, f.tenant_id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, 
+			f.severity, f.severity_description, f.confidence_score, f.environment, f.context, f.created_at, f.updated_at
 		FROM findings f
 		LEFT JOIN classifications c ON f.id = c.finding_id
-		WHERE f.asset_id = $1 AND (c.classification_type IS NULL OR c.classification_type != 'Non-PII')
+		WHERE f.asset_id = $1 AND f.tenant_id = $2 AND (c.classification_type IS NULL OR c.classification_type != 'Non-PII')
 		ORDER BY f.created_at DESC
-		LIMIT $2 OFFSET $3`
+		LIMIT $3 OFFSET $4`
 
-	return r.scanFindings(ctx, query, assetID, limit, offset)
+	return r.scanFindings(ctx, query, assetID, tenantID, limit, offset)
 }
 
 func (r *PostgresRepository) ListFindings(ctx context.Context, filters repository.FindingFilters, limit, offset int) ([]*entity.Finding, error) {
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// AUTO-EXCLUDE Non-PII: Join with classifications to filter out false positives
 	query := `
-		SELECT DISTINCT f.id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, 
-			f.severity, f.severity_description, f.confidence_score, f.context, f.created_at, f.updated_at
+		SELECT DISTINCT f.id, f.tenant_id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, 
+			f.severity, f.severity_description, f.confidence_score, f.environment, f.context, f.created_at, f.updated_at
 		FROM findings f
 		LEFT JOIN classifications c ON f.id = c.finding_id
-		WHERE (c.classification_type IS NULL OR c.classification_type != 'Non-PII')`
+		WHERE f.tenant_id = $1 AND (c.classification_type IS NULL OR c.classification_type != 'Non-PII')`
 
-	args := []interface{}{}
-	argCount := 1
+	args := []interface{}{tenantID}
+	argCount := 2
 
 	if filters.ScanRunID != nil {
 		query += fmt.Sprintf(" AND scan_run_id = $%d", argCount)
@@ -117,7 +144,7 @@ func (r *PostgresRepository) ListFindings(ctx context.Context, filters repositor
 	}
 
 	if filters.Severity != "" {
-		query += fmt.Sprintf(" AND severity = $%d", argCount)
+		query += fmt.Sprintf(" AND severity = ANY(string_to_array($%d, ','))", argCount)
 		args = append(args, filters.Severity)
 		argCount++
 	}
@@ -128,7 +155,7 @@ func (r *PostgresRepository) ListFindings(ctx context.Context, filters repositor
 		argCount++
 	}
 
-	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", argCount, argCount+1)
+	query += fmt.Sprintf(" ORDER BY f.created_at DESC LIMIT $%d OFFSET $%d", argCount, argCount+1)
 	args = append(args, limit, offset)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -140,16 +167,36 @@ func (r *PostgresRepository) ListFindings(ctx context.Context, filters repositor
 	return r.scanFindingsFromRows(rows)
 }
 
+// ListGlobalFindings retrieves findings across all tenants (for system dashboard)
+func (r *PostgresRepository) ListGlobalFindings(ctx context.Context, limit, offset int) ([]*entity.Finding, error) {
+	// Bypass tenant check
+	query := `
+		SELECT DISTINCT f.id, f.tenant_id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, f.matches, f.sample_text, 
+			f.severity, f.severity_description, f.confidence_score, f.environment, f.context, f.created_at, f.updated_at
+		FROM findings f
+		LEFT JOIN classifications c ON f.id = c.finding_id
+		WHERE (c.classification_type IS NULL OR c.classification_type != 'Non-PII')
+		ORDER BY f.created_at DESC
+		LIMIT $1 OFFSET $2`
+
+	return r.scanFindings(ctx, query, limit, offset)
+}
+
 func (r *PostgresRepository) CountFindings(ctx context.Context, filters repository.FindingFilters) (int, error) {
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return 0, err
+	}
+
 	// AUTO-EXCLUDE Non-PII: Join with classifications to filter out false positives
 	query := `
 		SELECT COUNT(DISTINCT f.id) 
 		FROM findings f
 		LEFT JOIN classifications c ON f.id = c.finding_id
-		WHERE (c.classification_type IS NULL OR c.classification_type != 'Non-PII')`
+		WHERE f.tenant_id = $1 AND (c.classification_type IS NULL OR c.classification_type != 'Non-PII')`
 
-	args := []interface{}{}
-	argCount := 1
+	args := []interface{}{tenantID}
+	argCount := 2
 
 	if filters.ScanRunID != nil {
 		query += fmt.Sprintf(" AND scan_run_id = $%d", argCount)
@@ -164,7 +211,7 @@ func (r *PostgresRepository) CountFindings(ctx context.Context, filters reposito
 	}
 
 	if filters.Severity != "" {
-		query += fmt.Sprintf(" AND severity = $%d", argCount)
+		query += fmt.Sprintf(" AND severity = ANY(string_to_array($%d, ','))", argCount)
 		args = append(args, filters.Severity)
 		argCount++
 	}
@@ -176,7 +223,7 @@ func (r *PostgresRepository) CountFindings(ctx context.Context, filters reposito
 	}
 
 	var count int
-	err := r.db.QueryRowContext(ctx, query, args...).Scan(&count)
+	err = r.db.QueryRowContext(ctx, query, args...).Scan(&count)
 	return count, err
 }
 
@@ -197,9 +244,9 @@ func (r *PostgresRepository) scanFindingsFromRows(rows *sql.Rows) ([]*entity.Fin
 		var contextJSON []byte
 
 		err := rows.Scan(
-			&finding.ID, &finding.ScanRunID, &finding.AssetID, &finding.PatternID, &finding.PatternName,
+			&finding.ID, &finding.TenantID, &finding.ScanRunID, &finding.AssetID, &finding.PatternID, &finding.PatternName,
 			pq.Array(&finding.Matches), &finding.SampleText, &finding.Severity, &finding.SeverityDescription,
-			&finding.ConfidenceScore, &contextJSON, &finding.CreatedAt, &finding.UpdatedAt,
+			&finding.ConfidenceScore, &finding.Environment, &contextJSON, &finding.CreatedAt, &finding.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -273,6 +320,11 @@ func (r *PostgresRepository) GetFeedbackForDataset(ctx context.Context) ([]entit
 
 // UpdateMaskedValues updates the masked_value field for multiple findings
 func (r *PostgresRepository) UpdateMaskedValues(ctx context.Context, maskedData map[uuid.UUID]string) error {
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return err
+	}
+
 	if len(maskedData) == 0 {
 		return nil
 	}
@@ -284,14 +336,14 @@ func (r *PostgresRepository) UpdateMaskedValues(ctx context.Context, maskedData 
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, `UPDATE findings SET masked_value = $1 WHERE id = $2`)
+	stmt, err := tx.PrepareContext(ctx, `UPDATE findings SET masked_value = $1 WHERE id = $2 AND tenant_id = $3`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer stmt.Close()
 
 	for findingID, maskedValue := range maskedData {
-		if _, err := stmt.ExecContext(ctx, maskedValue, findingID); err != nil {
+		if _, err := stmt.ExecContext(ctx, maskedValue, findingID, tenantID); err != nil {
 			return fmt.Errorf("failed to update finding %s: %w", findingID, err)
 		}
 	}
@@ -301,17 +353,21 @@ func (r *PostgresRepository) UpdateMaskedValues(ctx context.Context, maskedData 
 
 // GetFindingsByAssetWithMasking retrieves findings for an asset, returning masked values if available
 func (r *PostgresRepository) GetFindingsByAssetWithMasking(ctx context.Context, assetID uuid.UUID) ([]*entity.Finding, error) {
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	query := `
-		SELECT f.id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, 
+		SELECT f.id, f.tenant_id, f.scan_run_id, f.asset_id, f.pattern_id, f.pattern_name, 
 			f.matches, f.masked_value, f.sample_text, f.severity, f.severity_description, 
 			f.confidence_score, f.context, f.created_at, f.updated_at,
 			a.is_masked
 		FROM findings f
 		JOIN assets a ON f.asset_id = a.id
-		WHERE f.asset_id = $1
+		WHERE f.asset_id = $1 AND f.tenant_id = $2
 		ORDER BY f.created_at DESC`
 
-	rows, err := r.db.QueryContext(ctx, query, assetID)
+	rows, err := r.db.QueryContext(ctx, query, assetID, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +380,7 @@ func (r *PostgresRepository) GetFindingsByAssetWithMasking(ctx context.Context, 
 		var isMasked bool
 
 		err := rows.Scan(
-			&finding.ID, &finding.ScanRunID, &finding.AssetID, &finding.PatternID, &finding.PatternName,
+			&finding.ID, &finding.TenantID, &finding.ScanRunID, &finding.AssetID, &finding.PatternID, &finding.PatternName,
 			pq.Array(&finding.Matches), &finding.MaskedValue, &finding.SampleText, &finding.Severity, &finding.SeverityDescription,
 			&finding.ConfidenceScore, &contextJSON, &finding.CreatedAt, &finding.UpdatedAt,
 			&isMasked,

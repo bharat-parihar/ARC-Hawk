@@ -1,21 +1,39 @@
 # Use the official Python image as the base image
-FROM python:3
+FROM python:3.11-slim
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the local requirements.txt file to the container at /app
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    tesseract-ocr \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the requirements first for caching
 COPY requirements.txt /app/
-RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Install the dependencies from requirements.txt
-RUN pip3 install -r requirements.txt
+# Install Flask for API
+RUN pip3 install --no-cache-dir flask requests
 
-# Copy the local code to the container at /app
+ENV PYTHONUNBUFFERED=1
+
+# Copy the local code to the container
 COPY . /app/
 
-# Install the Python package (assuming it contains a setup.py file)
-RUN pip3 install .
+# Install the scanner package
+RUN pip3 install -e .
 
-# Run hawk_Scanner from python3 main.py
-ENTRYPOINT ["hawk_scanner"]
+# Expose the API port
+EXPOSE 5002
+
+# Environment variables
+ENV PORT=5002
+ENV BACKEND_URL=http://backend:8080
+
+# Run the HTTP API server
+CMD ["python3", "scanner_api.py"]

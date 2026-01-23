@@ -214,14 +214,7 @@ export default function CompliancePage() {
                             <h3 style={{ fontSize: '16px', fontWeight: 600, color: theme.colors.text.primary, marginBottom: '12px' }}>
                                 System Health
                             </h3>
-                            <div style={{ fontSize: '13px', color: theme.colors.text.secondary, lineHeight: '1.6' }}>
-                                <p>✅ Scanner Nodes: <strong>Online</strong></p>
-                                <p>✅ Policy Engine: <strong>Active</strong></p>
-                                <p>✅ Consent Ledger: <strong>Synced</strong></p>
-                                <p style={{ marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${theme.colors.border.default}` }}>
-                                    Last audit completed: <strong>{new Date().toLocaleTimeString()}</strong>
-                                </p>
-                            </div>
+                            <SystemHealthStatus />
                         </div>
                     </div>
                 </div>
@@ -282,6 +275,73 @@ function CategoryBar({ label, count, color }: any) {
             <div style={{ height: '6px', backgroundColor: theme.colors.background.tertiary, borderRadius: '3px', overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: '60%', backgroundColor: color, borderRadius: '3px' }} />
             </div>
+        </div>
+    );
+}
+
+function SystemHealthStatus() {
+    const [healthData, setHealthData] = React.useState<any>(null);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+        fetchHealthData();
+        const interval = setInterval(fetchHealthData, 30000); // Refresh every 30 seconds
+        return () => clearInterval(interval);
+    }, []);
+
+    const fetchHealthData = async () => {
+        try {
+            const res = await fetch('/api/v1/health/components');
+            if (res.ok) {
+                const data = await res.json();
+                setHealthData(data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch health data', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) {
+        return <div style={{ fontSize: '13px', color: theme.colors.text.secondary }}>Loading system health...</div>;
+    }
+
+    if (!healthData || !healthData.components) {
+        return <div style={{ fontSize: '13px', color: theme.colors.text.secondary }}>Health data unavailable</div>;
+    }
+
+    const getStatusIcon = (status: string) => {
+        switch (status) {
+            case 'online': return '✅';
+            case 'degraded': return '⚠️';
+            case 'offline': return '❌';
+            default: return '❓';
+        }
+    };
+
+    return (
+        <div style={{ fontSize: '13px', color: theme.colors.text.secondary, lineHeight: '1.6' }}>
+            {healthData.components.map((comp: any) => (
+                <p key={comp.name}>
+                    {getStatusIcon(comp.status)} {comp.name}: <strong style={{
+                        color: comp.status === 'online' ? theme.colors.risk.low :
+                            comp.status === 'degraded' ? theme.colors.risk.medium :
+                                theme.colors.risk.critical
+                    }}>{comp.status}</strong>
+                    {comp.message && <span style={{ fontSize: '12px', marginLeft: '8px' }}>({comp.message})</span>}
+                </p>
+            ))}
+            <p style={{ marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${theme.colors.border.default}` }}>
+                Last check: <strong>{new Date(healthData.timestamp).toLocaleTimeString()}</strong>
+            </p>
+            <p style={{ marginTop: '4px' }}>
+                Overall: <strong style={{
+                    color: healthData.status === 'healthy' ? theme.colors.risk.low :
+                        healthData.status === 'degraded' ? theme.colors.risk.medium :
+                            theme.colors.risk.critical
+                }}>{healthData.status}</strong>
+            </p>
         </div>
     );
 }

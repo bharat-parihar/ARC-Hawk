@@ -1,0 +1,41 @@
+version: '3.8'
+
+x-common-labels: &labels
+  app: "arc-hawk"
+  environment: "${ENVIRONMENT:-development}"
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'arc-hawk-api'
+    static_configs:
+      - targets: ['backend:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: 'arc-hawk-postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+
+  - job_name: 'arc-hawk-neo4j'
+    static_configs:
+      - targets: ['neo4j:2004']
+    scrape_interval: 30s
+
+  - job_name: 'arc-hawk-redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 30s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+      - targets:
+        - alertmanager:9093
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"

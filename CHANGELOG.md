@@ -22,7 +22,7 @@ Edges: CONTAINS, HAS_CATEGORY
 **New Architecture**:
 ```
 System → Asset → PII_Category
-Edges: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
+Edges: SYSTEM_OWNS_ASSET, EXPOSES
 ```
 
 **Benefits**:
@@ -44,7 +44,7 @@ Edges: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
 #### Graph Elements
 - **`DataCategory` nodes** - Intermediate layer no longer needed
 - **`CONTAINS` edges** - Replaced by `SYSTEM_OWNS_ASSET`
-- **`HAS_CATEGORY` edges** - Replaced by `ASSET_CONTAINS_PII`
+- **`HAS_CATEGORY` edges** - Replaced by `EXPOSES`
 
 ---
 

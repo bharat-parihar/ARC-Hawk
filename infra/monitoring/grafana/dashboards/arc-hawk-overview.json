@@ -1,0 +1,93 @@
+apiVersion: 1
+
+providers:
+  - name: 'prometheus'
+    type: 'prometheus'
+    access: 'proxy'
+    url: 'http://prometheus:9090'
+
+datasources:
+  - name: 'Prometheus'
+    type: 'prometheus'
+    url: 'http://prometheus:9090'
+    access: 'proxy'
+    isDefault: true
+
+dashboardProviders:
+  - name: 'default'
+    orgId: 1
+    folder: ''
+    type: 'file'
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: '/var/lib/grafana/dashboards'
+
+dashboards:
+  - id: arc-hawk-overview
+    title: 'ARC-Hawk Platform Overview'
+    tags: ['arc-hawk', 'overview']
+    timezone: 'browser'
+    schema: 0
+    version: 1
+    refresh: '30s'
+
+    panels:
+      - id: total-scans
+        type: 'stat'
+        title: 'Total Scans'
+        datasource: 'Prometheus'
+        targets:
+          - expr: 'sum(rate(arc_hawk_scan_trigger_total[5m])) or vector(0)'
+        fieldConfig:
+          defaults:
+            min: 0
+        options:
+          colorMode: 'value'
+          graphMode: 'area'
+          reduceOptions:
+            values: false
+            calcs: false
+        pluginVersion: 2
+
+      - id: total-findings
+        type: 'stat'
+        title: 'Total Findings'
+        datasource: 'Prometheus'
+        targets:
+          - expr: 'sum(rate(arc_hawk_total_findings[5m])) or vector(0)'
+        fieldConfig:
+          defaults:
+            min: 0
+        options:
+          colorMode: 'value'
+          graphMode: 'area'
+          reduceOptions:
+            values: false
+            calcs: false
+        pluginVersion: 2
+
+      - id: health-score
+        type: 'gauge'
+        title: 'System Health Score'
+        datasource: 'Prometheus'
+        targets:
+          - expr: 'arc_hawk_health_score'
+        options:
+          thresholds:
+            - value: 80
+              color: 'green'
+            - value: 60
+              color: 'yellow'
+            - value: 40
+              color: 'red'
+        pluginVersion: 2
+
+      - id: scan-errors
+        type: 'graph'
+        title: 'Scan Errors'
+        datasource: 'Prometheus'
+        targets:
+          - expr: 'rate(arc_hawk_scan_trigger_failures_total[5m])'
+        pluginVersion: 2

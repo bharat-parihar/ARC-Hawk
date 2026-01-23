@@ -19,16 +19,18 @@ import (
 type AssetService struct {
 	repo        *persistence.PostgresRepository
 	lineageSync interfaces.LineageSync
+	auditLogger interfaces.AuditLogger
 }
 
 // NewAssetService creates a new asset service
-func NewAssetService(repo *persistence.PostgresRepository, lineageSync interfaces.LineageSync) *AssetService {
+func NewAssetService(repo *persistence.PostgresRepository, lineageSync interfaces.LineageSync, auditLogger interfaces.AuditLogger) *AssetService {
 	if lineageSync == nil {
 		lineageSync = &interfaces.NoOpLineageSync{}
 	}
 	return &AssetService{
 		repo:        repo,
 		lineageSync: lineageSync,
+		auditLogger: auditLogger,
 	}
 }
 
@@ -60,6 +62,14 @@ func (s *AssetService) CreateOrUpdateAsset(ctx context.Context, asset *entity.As
 		isNew = false
 
 		log.Printf("📦 Asset already exists: %s (ID: %s)", asset.Name, assetID)
+
+		// Audit Log for Update (Implicit)
+		if s.auditLogger != nil {
+			_ = s.auditLogger.Record(ctx, "ASSET_ACCESSED", "asset", assetID.String(), map[string]interface{}{
+				"stable_id": asset.StableID,
+				"action":    "identified_existing",
+			})
+		}
 	} else {
 		// Create new asset
 		if asset.ID == uuid.Nil {
@@ -74,6 +84,15 @@ func (s *AssetService) CreateOrUpdateAsset(ctx context.Context, asset *entity.As
 		isNew = true
 
 		log.Printf("✅ Created new asset: %s (ID: %s)", asset.Name, assetID)
+
+		// Audit Log for Create
+		if s.auditLogger != nil {
+			_ = s.auditLogger.Record(ctx, "ASSET_CREATED", "asset", assetID.String(), map[string]interface{}{
+				"name":        asset.Name,
+				"data_source": asset.DataSource,
+				"owner":       asset.Owner,
+			})
+		}
 	}
 
 	// Trigger lineage sync (async, non-blocking)

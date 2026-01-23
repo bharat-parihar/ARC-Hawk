@@ -279,12 +279,14 @@ def normalize_for_matching(text):
         return text
     normalized = str(text)
     # Remove common formatting that might prevent regex matches
-    normalized = normalized.replace('-', '')
-    normalized = normalized.replace(' ', '')
-    normalized = normalized.replace('(', '')
-    normalized = normalized.replace(')', '')
-    normalized = normalized.replace('.', '')
+    # normalized = normalized.replace('-', '')
+    # normalized = normalized.replace(' ', '')
+    # normalized = normalized.replace('(', '')
+    # normalized = normalized.replace(')', '')
+    # normalized = normalized.replace('.', '')
     return normalized
+
+from hawk_scanner.internals.scanner_engine import ContextAwareScanner
 
 def match_strings(args, content, source='text'):
     redacted = False
@@ -294,50 +296,22 @@ def match_strings(args, content, source='text'):
             redacted: bool = connections.get('notify', {}).get('redacted', False)
     
     patterns = get_fingerprint_file(args)
+    
+    # Use New Context-Aware Scanner
+    scanner = ContextAwareScanner(debug=args.debug if args else False)
+    findings = scanner.scan(content, patterns, source)
+    
+    # Process findings for compatibility with legacy format
     matched_strings = []
-
-    for pattern_name, pattern_regex in patterns.items():
-        if args:
-            print_debug(args, f"Matching pattern: {pattern_name}")
-        found = {} 
-        ## parse pattern_regex as Regex
-        complied_regex = re.compile(pattern_regex, re.IGNORECASE)
-        
-        # Normalize content before matching for consistent results
-        normalized_content = normalize_for_matching(content)
-        raw_content = content  # Keep original for sample_text
+    
+    for finding in findings:
+        # Normalize structure for older consumers if needed
+        # Or just pass through the enriched finding
+        matched_strings.append(finding)
         
         if args:
-            print_debug(args, f"Regex: {complied_regex}")
-            print_debug(args, f"Normalized Content: {normalized_content}")
-        matches = re.findall(complied_regex, normalized_content)
-        print_debug(args, f"Matches: {matches}")
-        found['data_source'] = source
-        if matches:
-            print_debug(args, f"Found {len(matches)} matches for pattern: {pattern_name}")
-            found['pattern_name'] = pattern_name
-            redacted_matches = []
-            if redacted:
-                if args:
-                    print_debug(args, f"Redacting matches for pattern: {pattern_name}")
-                for match in matches:
-                    print_debug(args, f"Redacting match: {match}")
-                    redacted_matches.append(RedactData(match))
-                found['matches'] = redacted_matches
-            else:
-                found['matches'] = matches
-
-            if redacted:
-                found['sample_text'] = RedactData(raw_content[:50])
-            else:
-                found['sample_text'] = raw_content[:50]  # Use original, not normalized
-            if found['matches'] and len(found['matches']) > 0:
-                found['matches'] = [x.strip() for x in found['matches']]
-                found['matches'] = list(set(found['matches']))
-            matched_strings.append(found)
-    if args:
-        print_debug(args, f"Matched strings: {matched_strings}")
-    ## remove duplicates from matches and return
+            print_debug(args, f"Found pattern: {finding['pattern_name']} Score: {finding['confidence_score']}")
+            
     return matched_strings
 
 def should_exclude_file(args, file_name, exclude_patterns):

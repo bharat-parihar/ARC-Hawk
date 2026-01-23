@@ -1,0 +1,112 @@
+groups:
+  - name: arc-hawk.rules
+    rules:
+      - alert: ScanExecutionFailure
+        expr: rate(scan_failure_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: arc-hawk-api
+        annotations:
+          summary: "Scan executions are failing"
+          description: "More than 0 scan failures detected in the last 5 minutes"
+
+      - alert: ScanTimeout
+        expr: scan_duration_seconds > 1800
+        for: 1m
+        labels:
+          severity: warning
+          service: arc-hawk-api
+        annotations:
+          summary: "Scan execution timeout"
+          description: "Scan taking longer than 30 minutes"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 1m
+        labels:
+          severity: critical
+          service: arc-hawk-api
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate above 10% in the last 5 minutes"
+
+      - alert: DatabaseConnectionFailure
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: postgres
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "PostgreSQL database connection lost"
+
+      - alert: Neo4jConnectionFailure
+        expr: up{job="neo4j"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: neo4j
+        annotations:
+          summary: "Neo4j database is down"
+          description: "Neo4j database connection lost"
+
+      - alert: ScannerServiceDown
+        expr: up{job="arc-hawk-scanner"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: arc-hawk-scanner
+        annotations:
+          summary: "Scanner service is down"
+          description: "PII scanner service is not responding"
+
+      - alert: MemoryUsageHigh
+        expr: process_resident_memory_bytes / (1024 * 1024 * 1024) > 1024
+        for: 1m
+        labels:
+          severity: warning
+          service: arc-hawk-api
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage above 1GB for more than 1 minute"
+
+      - alert: CPUUsageHigh
+        expr: rate(cpu_usage_total[5m]) > 0.8
+        for: 1m
+        labels:
+          severity: warning
+          service: arc-hawk-api
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage above 80% for more than 1 minute"
+
+      - alert: RemediationFailureRate
+        expr: rate(remediation_failed_total[5m]) > 0.2
+        for: 1m
+        labels:
+          severity: critical
+          service: arc-hawk-api
+        annotations:
+          summary: "High remediation failure rate"
+          description: "Remediation failure rate above 20% in the last 5 minutes"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
+        for: 1m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "Low disk space"
+          description: "Available disk space below 10%"
+
+      - alert: WebSocketConnectionFailure
+        expr: rate(websocket_connections_failed_total[5m]) > 0.1
+        for: 1m
+        labels:
+          severity: warning
+          service: arc-hawk-websocket
+        annotations:
+          summary: "WebSocket connection failures"
+          description: "WebSocket connection failure rate above 10% in the last 5 minutes"

@@ -9,7 +9,7 @@ import (
 
 // === Frozen Semantic Contract: 3-Level Hierarchy ===
 // Node Types: System → Asset → PII_Category
-// Edge Types: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
+// Edge Types: SYSTEM_OWNS_ASSET, EXPOSES
 // NO transformation edges - only risk associations
 
 // CreatePIICategoryNode creates or updates a PII_Category node
@@ -46,7 +46,7 @@ func (r *Neo4jRepository) CreatePIICategoryNode(ctx context.Context, piiType str
 }
 
 // CreateHierarchyRelationship creates relationships using frozen semantic contract
-// Allowed edge types: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
+// Allowed edge types: SYSTEM_OWNS_ASSET, EXPOSES
 func (r *Neo4jRepository) CreateHierarchyRelationship(ctx context.Context, parentID, childID, relType string) error {
 	session := r.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
 	defer session.Close(ctx)
@@ -63,16 +63,16 @@ func (r *Neo4jRepository) CreateHierarchyRelationship(ctx context.Context, paren
 				SET r.updated_at = datetime()
 				RETURN r
 			`
-		case "ASSET_CONTAINS_PII": // Asset → PII_Category
+		case "EXPOSES": // Asset → PII_Category
 			query = `
 				MATCH (asset:Asset {id: $parentID})
 				MATCH (pii:PII_Category {type: $childID})
-				MERGE (asset)-[r:ASSET_CONTAINS_PII]->(pii)
+				MERGE (asset)-[r:EXPOSES]->(pii)
 				SET r.updated_at = datetime()
 				RETURN r
 			`
 		default:
-			return nil, fmt.Errorf("unknown relationship type: %s (allowed: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII)", relType)
+			return nil, fmt.Errorf("unknown relationship type: %s (allowed: SYSTEM_OWNS_ASSET, EXPOSES)", relType)
 		}
 
 		params := map[string]interface{}{
@@ -102,7 +102,7 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 		query := `
 			MATCH (sys:System)
 			OPTIONAL MATCH (sys)-[:SYSTEM_OWNS_ASSET]->(asset:Asset)
-			OPTIONAL MATCH (asset)-[:ASSET_CONTAINS_PII]->(pii:PII_Category)
+			OPTIONAL MATCH (asset)-[:EXPOSES]->(pii:PII_Category)
 			WHERE ($systemFilter = '' OR sys.host = $systemFilter)
 			  AND ($riskFilter = '' OR pii.risk_level IS NULL OR pii.risk_level = $riskFilter)
 			RETURN sys, asset, pii
@@ -229,20 +229,20 @@ func (r *Neo4jRepository) GetSemanticGraph(ctx context.Context, systemFilter, ri
 				}
 			}
 
-			// Asset -> PII_Category (ASSET_CONTAINS_PII)
+			// Asset -> PII_Category (EXPOSES)
 			if assetVal != nil && piiVal != nil {
 				if assetNode, ok := assetVal.(neo4j.Node); ok {
 					if piiNode, ok := piiVal.(neo4j.Node); ok {
 						assetID, _ := assetNode.Props["id"].(string)
 						piiType, _ := piiNode.Props["type"].(string)
 						if assetID != "" && piiType != "" {
-							edgeID := fmt.Sprintf("%s-ASSET_CONTAINS_PII-%s", assetID, piiType)
+							edgeID := fmt.Sprintf("%s-EXPOSES-%s", assetID, piiType)
 							if !edgeMap[edgeID] {
 								edges = append(edges, Edge{
 									ID:     edgeID,
 									Source: assetID,
 									Target: piiType,
-									Type:   "ASSET_CONTAINS_PII",
+									Type:   "EXPOSES",
 									Label:  "contains",
 								})
 								edgeMap[edgeID] = true
@@ -272,10 +272,10 @@ func (r *Neo4jRepository) GetPIIAggregations(ctx context.Context) ([]map[string]
 
 	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
 		// FROZEN SEMANTIC CONTRACT: 3-level hierarchy only
-		// System -[:SYSTEM_OWNS_ASSET]-> Asset -[:ASSET_CONTAINS_PII]-> PII_Category
+		// System -[:SYSTEM_OWNS_ASSET]-> Asset -[:EXPOSES]-> PII_Category
 		query := `
 			MATCH (pii:PII_Category)
-			OPTIONAL MATCH (asset:Asset)-[:ASSET_CONTAINS_PII]->(pii)
+			OPTIONAL MATCH (asset:Asset)-[:EXPOSES]->(pii)
 			OPTIONAL MATCH (sys:System)-[:SYSTEM_OWNS_ASSET]->(asset)
 			RETURN 
 			  pii.type as pii_type,

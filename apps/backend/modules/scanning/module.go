@@ -26,6 +26,7 @@ type ScanningModule struct {
 	sdkIngestHandler      *api.SDKIngestHandler
 	scanTriggerHandler    *api.ScanTriggerHandler
 	scanStatusHandler     *api.ScanStatusHandler
+	dashboardHandler      *api.DashboardHandler
 
 	// Dependencies
 	deps *interfaces.ModuleDependencies
@@ -78,7 +79,8 @@ func (m *ScanningModule) Initialize(deps *interfaces.ModuleDependencies) error {
 	)
 	m.sdkIngestHandler = api.NewSDKIngestHandler(m.ingestionService)
 	m.scanTriggerHandler = api.NewScanTriggerHandler(m.scanService, deps.WebSocketService) // Wired real WebSocket service
-	m.scanStatusHandler = api.NewScanStatusHandler(m.scanService)
+	m.scanStatusHandler = api.NewScanStatusHandler(m.scanService, deps.WebSocketService)
+	m.dashboardHandler = api.NewDashboardHandler(repo)
 
 	log.Printf("✅ Scanning & Classification Module initialized")
 	return nil
@@ -97,6 +99,8 @@ func (m *ScanningModule) RegisterRoutes(router *gin.RouterGroup) {
 		// Scan status and details
 		scans.GET("/:id", m.scanStatusHandler.GetScan)
 		scans.GET("/:id/status", m.scanStatusHandler.GetScanStatus)
+		scans.POST("/:id/complete", m.scanStatusHandler.CompleteScan)
+		scans.POST("/:id/cancel", m.scanStatusHandler.CancelScan)
 
 		// Scan management
 		scans.GET("", m.scanStatusHandler.ListScans)
@@ -109,6 +113,9 @@ func (m *ScanningModule) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		classification.GET("/summary", m.classificationHandler.GetClassificationSummary)
 	}
+
+	// Dashboard
+	router.GET("/dashboard/metrics", m.dashboardHandler.GetDashboardMetrics)
 
 	log.Printf("📡 Scanning & Classification routes registered")
 }

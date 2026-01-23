@@ -1,0 +1,27 @@
+version: '3.8'
+
+name: arc-hawk
+
+# Application metrics
+arc_hawk_api:
+  service: arc-hawk-api
+  metrics: 
+    - scan_duration_seconds
+    - scan_trigger_total
+    - scan_trigger_failures_total
+
+arc_hawk_scanner:
+  service: arc-hawk-scanner
+  metrics:
+    - scan_duration
+    - files_processed_total
+    - pii_findings_total
+
+# System metrics
+system:
+  service: arc-hawk-system
+  metrics:
+    - cpu_usage_percent
+    - memory_usage_bytes
+    - disk_usage_percent
+    - disk_available_bytes

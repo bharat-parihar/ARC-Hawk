@@ -37,7 +37,20 @@ type JWTService struct {
 func NewJWTService() *JWTService {
 	secretKey := os.Getenv("JWT_SECRET")
 	if secretKey == "" {
-		secretKey = "arc-hawk-secret-key-change-in-production"
+		// SECURITY: In production, JWT_SECRET must be set
+		// Generate a random key for development only
+		if os.Getenv("GIN_MODE") == "release" {
+			// In production mode, fail if no secret is set
+			panic("FATAL: JWT_SECRET environment variable is required in production mode")
+		}
+		// Development mode: generate a random secret and warn
+		randomBytes := make([]byte, 32)
+		if _, err := rand.Read(randomBytes); err != nil {
+			panic("Failed to generate random JWT secret: " + err.Error())
+		}
+		secretKey = base64.StdEncoding.EncodeToString(randomBytes)
+		// Log warning - this secret is ephemeral and will change on restart
+		println("⚠️  WARNING: Using auto-generated JWT secret. Set JWT_SECRET env var for persistent sessions.")
 	}
 
 	return &JWTService{

@@ -198,7 +198,7 @@ export function AddSourceModal({ isOpen, onClose }: AddSourceModalProps) {
                 setSuccess(false);
             }, 1500);
         } catch (err: any) {
-            setError(err.message || 'Failed to add connection');
+            setError(err.message || 'Unable to establish connection to your data source. This prevents PII discovery scans from running. Please verify your credentials and network settings to ensure DPDPA compliance scanning can proceed.');
         } finally {
             setIsSubmitting(false);
         }

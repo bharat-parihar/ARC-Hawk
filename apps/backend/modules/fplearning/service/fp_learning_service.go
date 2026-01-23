@@ -113,15 +113,17 @@ func (s *FPLearningService) CheckFalsePositive(
 }
 
 func (s *FPLearningService) matchFP(fp *entity.FPLearning, fieldPath, matchedValue string) bool {
-	if fp.FieldPath != "" && fp.FieldPath != fieldPath {
-		return false
+	// Create stored pattern for comparison
+	storedPattern := &StoredFPPattern{
+		FieldPath:    fp.FieldPath,
+		MatchedValue: fp.MatchedValue,
+		Pattern:      GeneratePattern(fp.MatchedValue, fp.PIIType),
+		PIIType:      fp.PIIType,
 	}
 
-	if fp.MatchedValue != "" && fp.MatchedValue != matchedValue {
-		return false
-	}
-
-	return true
+	// Use ML-based matching with default config
+	match := ComputeOverallMatch(storedPattern, fieldPath, matchedValue, fp.PIIType, DefaultSimilarityConfig)
+	return match.IsMatch
 }
 
 func (s *FPLearningService) GetFPLearnings(

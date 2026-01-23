@@ -1,5 +1,16 @@
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const isServer = typeof window === 'undefined';
+let API_BASE = '';
+
+if (isServer) {
+    // Server-side: Use full Docker URL
+    const envUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+    // Remove /api/v1 suffix if present because calls append it
+    API_BASE = envUrl.replace(/\/api\/v1\/?$/, '');
+} else {
+    // Client-side: Use empty string to allow relative paths (/api/v1/...)
+    API_BASE = '';
+}
 
 export interface ConnectionConfig {
     source_type: string;

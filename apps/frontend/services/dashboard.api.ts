@@ -69,7 +69,7 @@ async function getRecentFindings(): Promise<DashboardFinding[]> {
         }));
     } catch (error) {
         console.error('Failed to fetch recent findings:', error);
-        return getFallbackFindings();
+        return [];
     }
 }
 
@@ -132,9 +132,9 @@ async function getRiskDistribution(): Promise<{
     } catch (error) {
         console.error('Failed to fetch risk distribution:', error);
         return {
-            byPiiType: { 'Email': 0, 'Phone': 0, 'PAN': 0, 'Aadhaar': 0 },
+            byPiiType: {},
             byAsset: {},
-            byConfidence: { '> 90% (High)': 0, '70-90% (Med)': 0, '< 70% (Low)': 0 }
+            byConfidence: {}
         };
     }
 }
@@ -146,15 +146,27 @@ function getFallbackFindings(): DashboardFinding[] {
 export const dashboardApi = {
     async getDashboardData(): Promise<DashboardData> {
         try {
-            const [summaryRes, latestScanRes] = await Promise.allSettled([
-                get<{ data: ClassificationSummary }>('/classification/summary'),
-                get<{ data: any }>('/scans/latest')
-            ]);
+            // Try new dashboard metrics endpoint first (more accurate)
+            let metrics: DashboardMetrics;
+            try {
+                const metricsRes = await get<{ data: any }>('/dashboard/metrics');
+                if (metricsRes?.data) {
+                    metrics = {
+                        totalPII: metricsRes.data.total_pii || 0,
+                        highRiskFindings: metricsRes.data.high_risk_findings || 0,
+                        assetsHit: metricsRes.data.assets_hit || 0,
+                        actionsRequired: metricsRes.data.actions_required || 0
+                    };
+                } else {
+                    throw new Error('No metrics data');
+                }
+            } catch {
+                throw new Error('Failed to fetch metrics data');
+            }
 
-            const summary = summaryRes.status === 'fulfilled' ? summaryRes.value.data : null;
-            const latestScan = latestScanRes.status === 'fulfilled' ? latestScanRes.value.data : null;
+            const latestScanRes = await get<{ data: any }>('/scans/latest').catch(() => ({ data: null }));
+            const latestScan = latestScanRes.data;
 
-            const metrics = await getMetricsFromSummary(summary);
             const [recentFindings, riskDist] = await Promise.all([
                 getRecentFindings(),
                 getRiskDistribution()

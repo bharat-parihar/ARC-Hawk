@@ -43,6 +43,10 @@ func (s *IngestionService) IngestSDKVerified(ctx context.Context, input Verified
 		return fmt.Errorf("failed to create scan run: %w", err)
 	}
 
+	// Track assets and stats
+	assetMap := make(map[uuid.UUID]bool)
+	acceptedFindingsCount := 0
+
 	// Process each finding
 	for _, vf := range input.Findings {
 		fmt.Printf("🔍 Processing finding: PII type = '%s'\n", vf.PIIType)
@@ -55,12 +59,32 @@ func (s *IngestionService) IngestSDKVerified(ctx context.Context, input Verified
 		}
 
 		fmt.Printf("✅ Accepted finding: PII type '%s' is valid\n", vf.PIIType)
+		acceptedFindingsCount++
 
-		if err := s.processSingleSDKFinding(ctx, tx, adapter, scanRun.ID, &vf); err != nil {
+		assetID, err := s.processSingleSDKFinding(ctx, tx, adapter, scanRun.ID, &vf)
+		if err != nil {
 			// Log error but continue processing other findings
 			fmt.Printf("Error processing finding: %v\n", err)
 			continue
 		}
+
+		assetMap[assetID] = true
+	}
+
+	// Update asset stats (TotalFindings, RiskScore)
+	for assetID := range assetMap {
+		if err := s.recalculateAssetRisk(ctx, assetID); err != nil {
+			fmt.Printf("⚠️ Failed to recalculate risk for asset %s: %v\n", assetID, err)
+			// Continue - don't fail the whole ingestion for a stats update failure
+		}
+	}
+
+	// Update ScanRun total counts
+	scanRun.TotalFindings = acceptedFindingsCount
+	scanRun.TotalAssets = len(assetMap)
+
+	if err := tx.UpdateScanRun(ctx, scanRun); err != nil {
+		return fmt.Errorf("failed to update scan run with final stats: %w", err)
 	}
 
 	// Commit transaction
@@ -77,31 +101,31 @@ func (s *IngestionService) processSingleSDKFinding(
 	adapter *SDKAdapter,
 	scanRunID uuid.UUID,
 	vf *VerifiedFinding,
-) error {
+) (uuid.UUID, error) {
 	// 1. Get or create asset using AssetManager
 	asset := adapter.MapToAsset(vf)
 
 	// Delegate to AssetManager (single source of truth)
 	assetID, _, err := s.assetManager.CreateOrUpdateAsset(ctx, asset)
 	if err != nil {
-		return fmt.Errorf("failed to create/update asset: %w", err)
+		return uuid.Nil, fmt.Errorf("failed to create/update asset: %w", err)
 	}
 	asset.ID = assetID
 
 	// 2. Create finding
 	finding := adapter.MapToFinding(vf, scanRunID, asset.ID)
 	if err := tx.CreateFinding(ctx, finding); err != nil {
-		return fmt.Errorf("failed to create finding: %w", err)
+		return assetID, fmt.Errorf("failed to create finding: %w", err)
 	}
 
 	// 3. Create classification
 	classification := adapter.MapToClassification(vf, finding.ID)
 	if err := tx.CreateClassification(ctx, classification); err != nil {
-		return fmt.Errorf("failed to create classification: %w", err)
+		return assetID, fmt.Errorf("failed to create classification: %w", err)
 	}
 
 	// Note: Lineage sync is now handled automatically by AssetService
 	// No need to call it here - loose coupling achieved!
 
-	return nil
+	return assetID, nil
 }

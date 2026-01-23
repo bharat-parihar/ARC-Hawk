@@ -69,9 +69,9 @@ graph LR
 graph TD
     System[System<br/>PostgreSQL DB / File System] -->|SYSTEM_OWNS_ASSET| Asset1[Asset<br/>users_table]
     System -->|SYSTEM_OWNS_ASSET| Asset2[Asset<br/>transactions.csv]
-    Asset1 -->|ASSET_CONTAINS_PII| PII1[PII_Category<br/>PAN]
-    Asset1 -->|ASSET_CONTAINS_PII| PII2[PII_Category<br/>Aadhaar]
-    Asset2 -->|ASSET_CONTAINS_PII| PII3[PII_Category<br/>Email]
+    Asset1 -->|EXPOSES| PII1[PII_Category<br/>PAN]
+    Asset1 -->|EXPOSES| PII2[PII_Category<br/>Aadhaar]
+    Asset2 -->|EXPOSES| PII3[PII_Category<br/>Email]
 ```
 
 ### Node Types
@@ -98,7 +98,7 @@ graph TD
 - **Meaning**: System contains or owns this asset
 - **Cardinality**: One-to-Many
 
-#### ASSET_CONTAINS_PII
+#### EXPOSES
 - **Direction**: Asset → PII_Category
 - **Meaning**: Asset contains instances of this PII type
 - **Cardinality**: Many-to-Many
@@ -118,7 +118,7 @@ Edges: CONTAINS, HAS_CATEGORY
 **Current (v2.1.0)**:
 ```
 System → Asset → PII_Category
-Edges: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
+Edges: SYSTEM_OWNS_ASSET, EXPOSES
 ```
 
 **Benefits**:

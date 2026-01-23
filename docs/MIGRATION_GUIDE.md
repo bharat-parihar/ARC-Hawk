@@ -23,7 +23,7 @@ Edges: CONTAINS, HAS_CATEGORY
 **After (v2.1.0)**:
 ```
 System → Asset → PII_Category
-Edges: SYSTEM_OWNS_ASSET, ASSET_CONTAINS_PII
+Edges: SYSTEM_OWNS_ASSET, EXPOSES
 ```
 
 ### Code Changes
@@ -142,7 +142,7 @@ docker exec -i arc-hawk-neo4j cypher-shell \
 
 **Expected Output**:
 - Nodes: `System`, `Asset`, `PII_Category`
-- Edges: `SYSTEM_OWNS_ASSET`, `ASSET_CONTAINS_PII`
+- Edges: `SYSTEM_OWNS_ASSET`, `EXPOSES`
 
 ### Step 5: Clean Old Data (Optional)
 

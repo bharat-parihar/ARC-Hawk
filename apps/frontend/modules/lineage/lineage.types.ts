@@ -62,7 +62,7 @@ export interface LineageEdge {
     id: string;
     source: string;
     target: string;
-    type: 'SYSTEM_OWNS_ASSET' | 'ASSET_CONTAINS_PII';
+    type: 'SYSTEM_OWNS_ASSET' | 'EXPOSES';
     label?: string;
     metadata?: Record<string, any>;
 }

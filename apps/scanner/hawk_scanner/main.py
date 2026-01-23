@@ -220,7 +220,6 @@ def main():
     
     # NEW: Read scan config file if provided (from Go backend)
     if hasattr(args, 'config') and args.config:
-        import json
         try:
             with open(args.config, 'r') as f:
                 scan_config = json.load(f)

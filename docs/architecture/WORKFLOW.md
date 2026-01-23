@@ -81,7 +81,7 @@ Syncs SQL relational data to Neo4j Graph DB.
 2.  **Processing**:
     - `Asset` -> Neo4j Node
     - `Findings` -> PII_Category Nodes
-    - `Relationships` -> EDGES (`ASSET_CONTAINS_PII`)
+    - `Relationships` -> EDGES (`EXPOSES`)
 3.  **Result**: Graph is updated immediately for visualization.
 
 ---

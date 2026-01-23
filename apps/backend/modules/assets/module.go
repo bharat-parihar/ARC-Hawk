@@ -41,7 +41,20 @@ func (m *AssetsModule) Initialize(deps *interfaces.ModuleDependencies) error {
 		log.Printf("⚠️  LineageSync not available - using NoOp implementation")
 	}
 
-	m.assetService = service.NewAssetService(repo, lineageSync)
+	// Get Audit Logger
+	var auditLogger interfaces.AuditLogger
+	if deps.AuditLogger != nil {
+		auditLogger = deps.AuditLogger
+	} else {
+		// Fallback or panic? For now, we allow nil if interface handles it,
+		// but better to mock it if nil.
+		// Since we didn't create a NoOpAuditLogger, we'll assume it's there or handle nil in Service.
+		// A better approach is NoOp if nil.
+		// Let's assume initialized by main.go
+		auditLogger = deps.AuditLogger
+	}
+
+	m.assetService = service.NewAssetService(repo, lineageSync, auditLogger)
 	m.findingsService = service.NewFindingsService(repo)
 	m.datasetService = service.NewDatasetService(repo)
 

@@ -9,6 +9,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Disable telemetry during build
 ENV NEXT_TELEMETRY_DISABLED 1
+# Set API URL for Next.js rewrites (uses Docker internal hostname)
+ARG NEXT_PUBLIC_API_URL=http://backend:8080/api/v1
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 FROM node:18-alpine AS runner

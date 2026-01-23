@@ -4,17 +4,20 @@ import (
 	"database/sql"
 	"log"
 
+	"github.com/arc-platform/backend/modules/auth/middleware"
 	"github.com/arc-platform/backend/modules/remediation/api"
 	"github.com/arc-platform/backend/modules/remediation/service"
+	"github.com/arc-platform/backend/modules/shared/infrastructure/persistence"
 	"github.com/arc-platform/backend/modules/shared/interfaces"
 	"github.com/gin-gonic/gin"
 )
 
 // RemediationModule implements the Module interface
 type RemediationModule struct {
-	db          *sql.DB
-	lineageSync interfaces.LineageSync
-	service     *service.RemediationService
+	db             *sql.DB
+	lineageSync    interfaces.LineageSync
+	service        *service.RemediationService
+	authMiddleware *middleware.AuthMiddleware
 }
 
 // NewRemediationModule creates a new remediation module
@@ -42,6 +45,10 @@ func (m *RemediationModule) Initialize(deps *interfaces.ModuleDependencies) erro
 	// Initialize service with LineageSync instead of Neo4j driver
 	m.service = service.NewRemediationService(m.db, m.lineageSync)
 
+	// Initialize Auth Middleware for permission checks
+	repo := persistence.NewPostgresRepository(m.db)
+	m.authMiddleware = middleware.NewAuthMiddleware(repo)
+
 	log.Println("✅ Remediation module initialized")
 	return nil
 }
@@ -55,7 +62,8 @@ func (m *RemediationModule) RegisterRoutes(router *gin.RouterGroup) {
 	g := router.Group("/remediation")
 	{
 		g.POST("/preview", handler.GeneratePreview)
-		g.POST("/execute", handler.ExecuteRemediation)
+		// Enforce "remediation:execute" permission for execution
+		g.POST("/execute", m.authMiddleware.RequirePermission("remediation:execute"), handler.ExecuteRemediation)
 
 		// Specific routes MUST come before dynamic /:id route
 		g.GET("/history", historyHandler.GetHistory)

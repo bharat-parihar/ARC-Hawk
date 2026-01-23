@@ -38,11 +38,12 @@ func (s *ScanService) CreateScanRun(ctx context.Context, req *TriggerScanRequest
 		Status:        "pending",
 		ScanStartedAt: time.Now(),
 		Metadata: map[string]interface{}{
-			"sources":        req.Sources,
-			"pii_types":      req.PIITypes,
-			"execution_mode": req.ExecutionMode,
-			"triggered_by":   triggeredBy,
-			"trigger_source": "ui",
+			"sources":         req.Sources,
+			"pii_types":       req.PIITypes,
+			"execution_mode":  req.ExecutionMode,
+			"triggered_by":    triggeredBy,
+			"trigger_source":  "ui",
+			"timeout_minutes": 30, // Default timeout
 		},
 	}
 
@@ -64,12 +65,51 @@ func (s *ScanService) UpdateScanStatus(ctx context.Context, scanID uuid.UUID, st
 	if status == "running" && scanRun.ScanStartedAt.IsZero() {
 		scanRun.ScanStartedAt = time.Now()
 	}
-	if status == "completed" || status == "failed" {
+	if status == "completed" || status == "failed" || status == "cancelled" || status == "timeout" {
 		scanRun.ScanCompletedAt = time.Now()
 	}
 
 	if err := s.repo.UpdateScanRun(ctx, scanRun); err != nil {
 		return fmt.Errorf("failed to update scan run: %w", err)
+	}
+
+	return nil
+}
+
+// CancelScan cancels a running scan
+func (s *ScanService) CancelScan(ctx context.Context, scanID uuid.UUID) error {
+	scanRun, err := s.repo.GetScanRunByID(ctx, scanID)
+	if err != nil {
+		return fmt.Errorf("failed to get scan run: %w", err)
+	}
+
+	// Only allow cancellation of pending or running scans
+	if scanRun.Status != "pending" && scanRun.Status != "running" {
+		return fmt.Errorf("cannot cancel scan with status: %s", scanRun.Status)
+	}
+
+	return s.UpdateScanStatus(ctx, scanID, "cancelled")
+}
+
+// CheckScanTimeout checks if a scan has exceeded its timeout and marks it as timed out
+func (s *ScanService) CheckScanTimeout(ctx context.Context, scanID uuid.UUID) error {
+	scanRun, err := s.repo.GetScanRunByID(ctx, scanID)
+	if err != nil {
+		return fmt.Errorf("failed to get scan run: %w", err)
+	}
+
+	if scanRun.Status != "running" {
+		return nil // Only check running scans
+	}
+
+	timeoutMinutes := 30 // Default
+	if timeout, ok := scanRun.Metadata["timeout_minutes"].(float64); ok {
+		timeoutMinutes = int(timeout)
+	}
+
+	elapsed := time.Since(scanRun.ScanStartedAt)
+	if elapsed > time.Duration(timeoutMinutes)*time.Minute {
+		return s.UpdateScanStatus(ctx, scanID, "timeout")
 	}
 
 	return nil

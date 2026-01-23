@@ -58,7 +58,7 @@ export function ScanConfigModal({ isOpen, onClose, onRunScan }: ScanConfigModalP
             setSources(data.connections || []);
         } catch (error) {
             console.error('Failed to load sources:', error);
-            setSourcesError('Failed to load data sources. Please try again.');
+            setSourcesError('Unable to load data sources. This may prevent you from scanning for PII compliance. Please check your connection and try again.');
         } finally {
             setLoadingSources(false);
         }
@@ -126,7 +126,7 @@ export function ScanConfigModal({ isOpen, onClose, onRunScan }: ScanConfigModalP
             onClose();
         } catch (error) {
             console.error('Failed to trigger scan:', error);
-            alert('Failed to trigger scan. Please check console for details.');
+            alert('Unable to start PII discovery scan. This may delay your DPDPA compliance assessment. Please verify your data sources are configured correctly and try again.');
         }
     };
 

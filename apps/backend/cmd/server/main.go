@@ -22,10 +22,14 @@ import (
 	"github.com/arc-platform/backend/modules/masking"
 	"github.com/arc-platform/backend/modules/remediation"
 	"github.com/arc-platform/backend/modules/scanning"
+	"github.com/arc-platform/backend/modules/scanning/worker"
+	"github.com/arc-platform/backend/modules/shared/api"
 	"github.com/arc-platform/backend/modules/shared/config"
+	"github.com/arc-platform/backend/modules/shared/infrastructure/audit"
 	"github.com/arc-platform/backend/modules/shared/infrastructure/database"
 	"github.com/arc-platform/backend/modules/shared/infrastructure/persistence"
 	"github.com/arc-platform/backend/modules/shared/interfaces"
+	"github.com/arc-platform/backend/modules/shared/middleware"
 	"github.com/arc-platform/backend/modules/websocket"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -111,12 +115,18 @@ func main() {
 
 	registry := interfaces.NewModuleRegistry()
 
+	// Initialize Audit Logger (Shared Infrastructure)
+	// We create a dedicated repository instance for audit logging
+	auditRepo := persistence.NewPostgresRepository(db)
+	auditLogger := audit.NewPostgresAuditLogger(auditRepo)
+
 	// Prepare base module dependencies (without interfaces)
 	baseDeps := &interfaces.ModuleDependencies{
-		DB:        db,
-		Neo4jRepo: neo4jRepo,
-		Config:    cfg,
-		Registry:  registry,
+		DB:          db,
+		Neo4jRepo:   neo4jRepo,
+		Config:      cfg,
+		Registry:    registry,
+		AuditLogger: auditLogger,
 	}
 
 	// Phase 1: Initialize Assets Module first (no dependencies)
@@ -182,6 +192,29 @@ func main() {
 	log.Println("\n✅ All modules initialized successfully")
 	log.Println(strings.Repeat("=", 70))
 
+	// Optional: Initialize Temporal Worker
+	var temporalWorker *worker.TemporalWorker
+	if getEnv("TEMPORAL_ENABLED", "false") == "true" {
+		temporalAddress := getEnv("TEMPORAL_HOST_PORT", "localhost:7233")
+		log.Printf("⏰ Initializing Temporal Worker (address: %s)...", temporalAddress)
+
+		var err error
+		temporalWorker, err = worker.NewTemporalWorker(temporalAddress, db, neo4jRepo.GetDriver())
+		if err != nil {
+			log.Printf("⚠️  Warning: Failed to initialize Temporal Worker: %v", err)
+			log.Println("   Temporal workflows will not be available")
+		} else {
+			go func() {
+				if err := temporalWorker.Start(); err != nil {
+					log.Printf("⚠️  Temporal Worker error: %v", err)
+				}
+			}()
+			log.Println("✅ Temporal Worker started")
+		}
+	} else {
+		log.Println("ℹ️  Temporal disabled (set TEMPORAL_ENABLED=true to enable)")
+	}
+
 	log.Println(strings.Repeat("=", 70))
 
 	// Setup HTTP server
@@ -201,14 +234,47 @@ func main() {
 	// Recovery middleware
 	router.Use(gin.Recovery())
 
+	// Rate limiting middleware
+	rateLimiter := middleware.APIRateLimiter()
+	if rateLimiter != nil {
+		router.Use(rateLimiter.Middleware())
+		log.Println("🛡️  Rate limiting enabled (100 req/min per IP)")
+	}
+
+	// Security Headers middleware (Audit Phase 2)
+	router.Use(middleware.SecurityHeaders())
+	log.Println("🔒 Security Headers enabled (HSTS, CSP, X-Frame-Options)")
+
 	// Initialize JWT service
 	jwtService := service.NewJWTService()
 
-	// Auth middleware
+	// Auth middleware with enforcement
+	// Define paths that allow anonymous access
+	publicPaths := map[string]bool{
+		"/api/v1/auth/login":    true,
+		"/api/v1/auth/register": true,
+		"/api/v1/auth/refresh":  true,
+		"/api/v1/health":        true,
+	}
+
 	authMiddleware := func(c *gin.Context) {
+		path := c.Request.URL.Path
+
+		// Check if this is a public path
+		if publicPaths[path] {
+			c.Next()
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			// No token, allow anonymous access for now
+			// Check if AUTH_REQUIRED is enabled (default: false for backward compatibility)
+			if getEnv("AUTH_REQUIRED", "false") == "true" {
+				c.JSON(401, gin.H{"error": "Authorization required", "message": "Please provide a valid Bearer token"})
+				c.Abort()
+				return
+			}
+			// Allow anonymous access when AUTH_REQUIRED is false
 			c.Next()
 			return
 		}
@@ -223,16 +289,17 @@ func main() {
 		token := authHeader[7:]
 		claims, err := jwtService.ValidateToken(token)
 		if err != nil {
-			c.JSON(401, gin.H{"error": "Invalid token"})
+			c.JSON(401, gin.H{"error": "Invalid token", "details": err.Error()})
 			c.Abort()
 			return
 		}
 
-		// Set user context
+		// Set user context for downstream handlers
 		c.Set("user_id", claims.UserID)
 		c.Set("user_email", claims.Email)
 		c.Set("user_role", claims.Role)
 		c.Set("tenant_id", claims.TenantID)
+		c.Set("authenticated", true)
 		c.Next()
 	}
 
@@ -275,6 +342,10 @@ func main() {
 		module.RegisterRoutes(apiV1)
 	}
 
+	// Register health components endpoint
+	healthHandler := api.NewHealthHandler(db, neo4jRepo)
+	apiV1.GET("/health/components", healthHandler.GetComponentsHealth)
+
 	log.Println("\n✅ All routes registered")
 	log.Println(strings.Repeat("=", 70))
 
@@ -308,7 +379,11 @@ func main() {
 
 	log.Println("\n🛑 Shutting down server...")
 
-	// TODO: Shutdown Temporal worker
+	// Shutdown Temporal worker if running
+	if temporalWorker != nil {
+		log.Println("⏰ Stopping Temporal Worker...")
+		temporalWorker.Stop()
+	}
 
 	// Shutdown all modules
 	if err := registry.ShutdownAll(); err != nil {

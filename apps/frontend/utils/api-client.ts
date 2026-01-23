@@ -8,7 +8,12 @@ export interface ApiResponse<T> {
     details?: string[];
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+const isServer = typeof window === 'undefined';
+// Client: use relative path /api/v1 (proxied by Next.js)
+// Server: use full Docker URL from env
+const API_BASE_URL = isServer
+    ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1')
+    : '/api/v1';
 
 // Create Axios Instance with strict defaults
 export const apiClient: AxiosInstance = axios.create({

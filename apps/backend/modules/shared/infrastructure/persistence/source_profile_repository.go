@@ -19,28 +19,40 @@ func (r *PostgresRepository) CreateSourceProfile(ctx context.Context, profile *e
 		return fmt.Errorf("failed to marshal configuration: %w", err)
 	}
 
+	// Enforce Tenant ID
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return err
+	}
+	profile.TenantID = tenantID
+
 	query := `
-		INSERT INTO source_profiles (id, name, description, data_source_type, configuration, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO source_profiles (id, tenant_id, name, description, data_source_type, configuration, is_active)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING created_at, updated_at`
 
 	return r.db.QueryRowContext(ctx, query,
-		profile.ID, profile.Name, profile.Description, profile.DataSourceType,
+		profile.ID, profile.TenantID, profile.Name, profile.Description, profile.DataSourceType,
 		configJSON, profile.IsActive,
 	).Scan(&profile.CreatedAt, &profile.UpdatedAt)
 }
 
 func (r *PostgresRepository) GetSourceProfileByName(ctx context.Context, name string) (*entity.SourceProfile, error) {
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
-		SELECT id, name, description, data_source_type, configuration, is_active, created_at, updated_at
+		SELECT id, tenant_id, name, description, data_source_type, configuration, is_active, created_at, updated_at
 		FROM source_profiles 
-		WHERE name = $1`
+		WHERE name = $1 AND tenant_id = $2`
 
 	profile := &entity.SourceProfile{}
 	var configJSON []byte
 
-	err := r.db.QueryRowContext(ctx, query, name).Scan(
-		&profile.ID, &profile.Name, &profile.Description, &profile.DataSourceType,
+	err = r.db.QueryRowContext(ctx, query, name, tenantID).Scan(
+		&profile.ID, &profile.TenantID, &profile.Name, &profile.Description, &profile.DataSourceType,
 		&configJSON, &profile.IsActive, &profile.CreatedAt, &profile.UpdatedAt,
 	)
 
@@ -61,12 +73,18 @@ func (r *PostgresRepository) GetSourceProfileByName(ctx context.Context, name st
 }
 
 func (r *PostgresRepository) ListSourceProfiles(ctx context.Context) ([]*entity.SourceProfile, error) {
+	tenantID, err := EnsureTenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
-		SELECT id, name, description, data_source_type, configuration, is_active, created_at, updated_at
+		SELECT id, tenant_id, name, description, data_source_type, configuration, is_active, created_at, updated_at
 		FROM source_profiles 
+		WHERE tenant_id = $1
 		ORDER BY name`
 
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := r.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +96,7 @@ func (r *PostgresRepository) ListSourceProfiles(ctx context.Context) ([]*entity.
 		var configJSON []byte
 
 		err := rows.Scan(
-			&profile.ID, &profile.Name, &profile.Description, &profile.DataSourceType,
+			&profile.ID, &profile.TenantID, &profile.Name, &profile.Description, &profile.DataSourceType,
 			&configJSON, &profile.IsActive, &profile.CreatedAt, &profile.UpdatedAt,
 		)
 		if err != nil {

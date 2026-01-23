@@ -18,11 +18,13 @@
 
 ARC-Hawk is a **production-ready platform** that automatically discovers, validates, and tracks Personally Identifiable Information (PII) across your entire data infrastructure. Built with an **Intelligence-at-Edge** architecture, it provides:
 
+- ✅ **Context-Aware Detection** - Smart engine distinguishes real code (`key="value"`) from test data/comments
+- ✅ **Entropy Validation** - Rejects low-entropy secrets ("password123") vs high-entropy keys
+- ✅ **Dual Pipeline Isolation** - Strict separation of Production vs Test data to prevent dashboard pollution
 - ✅ **Accurate PII Detection** - Mathematical validation (Verhoeff, Luhn algorithms) with 100% accuracy
 - ✅ **Multi-Source Scanning** - Filesystem, PostgreSQL, MySQL, MongoDB, S3, GCS, Redis, and more
 - ✅ **Semantic Lineage** - Visual graph showing where PII flows across your systems
 - ✅ **Compliance Ready** - DPDPA 2023 (India) mapping with consent and retention tracking
-- ✅ **Automated Remediation** - One-click masking and deletion of sensitive data
 - ✅ **Real-Time Monitoring** - Live scan progress and system health tracking
 
 ---
@@ -85,7 +87,12 @@ graph TD
 
 ## ✨ Key Features
 
-### 🔍 Intelligent PII Detection
+### 🔍 Context-Aware Intelligence Engine
+**No more false positives.** The scanner uses a 3-stage validation pipeline:
+1. **Context Analysis**: Understands variable assignments vs comments.
+2. **Entropy Check**: Validates the randomness of secrets.
+3. **Data Classification**: Automatically routes Test data to a separate pipeline.
+
 **11 Locked India-Specific PII Types** with mathematical validation (Aadhaar, PAN, Passport, etc.) ensuring **Zero False Positives**.
 
 ### 🌐 Multi-Source Scanning

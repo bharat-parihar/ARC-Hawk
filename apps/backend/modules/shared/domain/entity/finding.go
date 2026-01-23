@@ -20,6 +20,7 @@ type Finding struct {
 	Severity            string                 `json:"severity"`
 	SeverityDescription string                 `json:"severity_description"`
 	ConfidenceScore     *float64               `json:"confidence_score,omitempty"`
+	Environment         string                 `json:"environment"` // "PROD" or "TEST"
 	Context             map[string]interface{} `json:"context,omitempty"`
 	EnrichmentSignals   map[string]interface{} `json:"enrichment_signals,omitempty"`
 	EnrichmentScore     *float64               `json:"enrichment_score,omitempty"`

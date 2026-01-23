@@ -130,7 +130,9 @@ func (s *TestConnectionService) testPostgreSQL(ctx context.Context, config map[s
 	if err != nil {
 		result.Success = false
 		result.Message = "Failed to create database connection"
-		result.ErrorDetails = err.Error()
+		result.ErrorDetails = "Invalid connection configuration. Please check your database settings."
+		// Log detailed error server-side only
+		fmt.Printf("[SECURITY] PostgreSQL connection creation failed - %v\n", err)
 		return result, nil
 	}
 	defer db.Close()
@@ -140,8 +142,10 @@ func (s *TestConnectionService) testPostgreSQL(ctx context.Context, config map[s
 
 	if err := db.PingContext(ctx); err != nil {
 		result.Success = false
-		result.Message = "Failed to ping database"
-		result.ErrorDetails = err.Error()
+		result.Message = "Failed to connect to PostgreSQL database"
+		result.ErrorDetails = "Unable to establish connection. Please verify your credentials, hostname, and network access."
+		// Log detailed error server-side only
+		fmt.Printf("[SECURITY] PostgreSQL connection failed for %s:%d - %v\n", host, port, err)
 		return result, nil
 	}
 
@@ -178,7 +182,9 @@ func (s *TestConnectionService) testMySQL(ctx context.Context, config map[string
 	if err != nil {
 		result.Success = false
 		result.Message = "Failed to create database connection"
-		result.ErrorDetails = err.Error()
+		result.ErrorDetails = "Invalid connection configuration. Please check your database settings."
+		// Log detailed error server-side only
+		fmt.Printf("[SECURITY] MySQL connection creation failed - %v\n", err)
 		return result, nil
 	}
 	defer db.Close()
@@ -188,8 +194,10 @@ func (s *TestConnectionService) testMySQL(ctx context.Context, config map[string
 
 	if err := db.PingContext(ctx); err != nil {
 		result.Success = false
-		result.Message = "Failed to ping database"
-		result.ErrorDetails = err.Error()
+		result.Message = "Failed to connect to MySQL database"
+		result.ErrorDetails = "Unable to establish connection. Please verify your credentials, hostname, and network access."
+		// Log detailed error server-side only
+		fmt.Printf("[SECURITY] MySQL connection failed for %s:%d - %v\n", host, port, err)
 		return result, nil
 	}
 
@@ -237,7 +245,9 @@ func (s *TestConnectionService) testMongoDB(ctx context.Context, config map[stri
 	if err != nil {
 		result.Success = false
 		result.Message = "Failed to connect to MongoDB"
-		result.ErrorDetails = err.Error()
+		result.ErrorDetails = "Unable to establish connection. Please verify your credentials and connection string."
+		// Log detailed error server-side only
+		fmt.Printf("[SECURITY] MongoDB connection failed for %s:%d - %v\n", host, port, err)
 		return result, nil
 	}
 	defer client.Disconnect(ctx)
@@ -245,7 +255,9 @@ func (s *TestConnectionService) testMongoDB(ctx context.Context, config map[stri
 	if err := client.Ping(ctx, nil); err != nil {
 		result.Success = false
 		result.Message = "Failed to ping MongoDB"
-		result.ErrorDetails = err.Error()
+		result.ErrorDetails = "Connection established but ping failed. Please verify database permissions."
+		// Log detailed error server-side only
+		fmt.Printf("[SECURITY] MongoDB ping failed for %s:%d - %v\n", host, port, err)
 		return result, nil
 	}
 
@@ -284,7 +296,9 @@ func (s *TestConnectionService) testS3(ctx context.Context, config map[string]in
 	if err != nil {
 		result.Success = false
 		result.Message = "Failed to connect to S3 endpoint"
-		result.ErrorDetails = err.Error()
+		result.ErrorDetails = "Unable to reach S3 endpoint. Please verify region, endpoint URL, and network connectivity."
+		// Log detailed error server-side only
+		fmt.Printf("[SECURITY] S3 connection failed for region %s - %v\n", region, err)
 		return result, nil
 	}
 	defer conn.Close()
@@ -333,7 +347,9 @@ func (s *TestConnectionService) testRedis(ctx context.Context, config map[string
 	if err != nil {
 		result.Success = false
 		result.Message = "Failed to connect to Redis"
-		result.ErrorDetails = err.Error()
+		result.ErrorDetails = "Unable to reach Redis server. Please verify hostname, port, and network access."
+		// Log detailed error server-side only
+		fmt.Printf("[SECURITY] Redis connection failed for %s - %v\n", addr, err)
 		return result, nil
 	}
 	defer conn.Close()

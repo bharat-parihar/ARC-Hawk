@@ -152,10 +152,10 @@ test_verify_sync() {
         
         # Verify relationships
         system_owns_asset=$(echo "$response" | jq '[.data.edges[] | select(.type == "SYSTEM_OWNS_ASSET")] | length')
-        asset_contains_pii=$(echo "$response" | jq '[.data.edges[] | select(.type == "ASSET_CONTAINS_PII")] | length')
+        asset_contains_pii=$(echo "$response" | jq '[.data.edges[] | select(.type == "EXPOSES")] | length')
         
         echo "  - SYSTEM_OWNS_ASSET edges: $system_owns_asset"
-        echo "  - ASSET_CONTAINS_PII edges: $asset_contains_pii"
+        echo "  - EXPOSES edges: $asset_contains_pii"
         
         # Validation checks
         if [ "$system_count" -gt 0 ] && [ "$asset_count" -gt 0 ] && [ "$pii_count" -gt 0 ]; then
@@ -171,9 +171,9 @@ test_verify_sync() {
         fi
         
         if [ "$asset_contains_pii" -eq "$pii_count" ]; then
-            print_success "All PII categories have ASSET_CONTAINS_PII relationship"
+            print_success "All PII categories have EXPOSES relationship"
         else
-            print_warning "Mismatch: $pii_count PII categories but $asset_contains_pii ASSET_CONTAINS_PII edges"
+            print_warning "Mismatch: $pii_count PII categories but $asset_contains_pii EXPOSES edges"
         fi
         
     else

@@ -43,6 +43,7 @@ func NewIngestionService(
 
 // HawkeyeScanInput represents the Hawk-eye scanner JSON format
 type HawkeyeScanInput struct {
+	ScanID     string           `json:"scan_id"` // Added for correlation
 	FS         []HawkeyeFinding `json:"fs"`
 	PostgreSQL []HawkeyeFinding `json:"postgresql"`
 }
@@ -95,25 +96,57 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 	// Combine findings
 	allFindings := append(input.FS, input.PostgreSQL...)
 
-	// Create ScanRun
-	profileName := allFindings[0].Profile
-	if profileName == "" {
-		profileName = "default"
+	// Try to link to existing ScanRun if ScanID is provided in input
+	// (Check first finding's custom field or top-level metadata if available)
+	var scanRun *entity.ScanRun
+
+	// Check if scan_id is in the input (we added this field to struct)
+	if input.ScanID != "" {
+		if id, err := uuid.Parse(input.ScanID); err == nil {
+			scanRun, err = s.repo.GetScanRunByID(ctx, id)
+			if err != nil {
+				log.Printf("WARNING: specific scan_id %s not found, creating new", input.ScanID)
+			}
+		}
 	}
 
-	scanRun := &entity.ScanRun{
-		ID:              uuid.New(),
-		ProfileName:     profileName,
-		ScanStartedAt:   time.Now().Add(-5 * time.Minute), // Approximate
-		ScanCompletedAt: time.Now(),
-		Host:            allFindings[0].Host,
-		Status:          "completed",
-		Metadata:        map[string]interface{}{},
+	// Also check first finding's profile or metadata if available
+	if scanRun == nil && len(allFindings) > 0 {
+		// Fallback logic could go here
 	}
 
-	if err := tx.CreateScanRun(ctx, scanRun); err != nil {
-		tx.Rollback()
-		return nil, fmt.Errorf("failed to create scan run: %w", err)
+	if scanRun == nil {
+		profileName := allFindings[0].Profile
+		if profileName == "" {
+			profileName = "default"
+		}
+
+		scanRun = &entity.ScanRun{
+			ID:              uuid.New(),
+			ProfileName:     profileName,
+			ScanStartedAt:   time.Now().Add(-5 * time.Minute), // Approximate
+			ScanCompletedAt: time.Now(),
+			Host:            allFindings[0].Host,
+			Status:          "completed",
+			Metadata:        map[string]interface{}{},
+		}
+
+		if err := tx.CreateScanRun(ctx, scanRun); err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("failed to create scan run: %w", err)
+		}
+	} else {
+		// Update existing scan run
+		scanRun.Status = "completed"
+		scanRun.ScanCompletedAt = time.Now()
+		if scanRun.Metadata == nil {
+			scanRun.Metadata = make(map[string]interface{})
+		}
+
+		if err := tx.UpdateScanRun(ctx, scanRun); err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("failed to update scan run: %w", err)
+		}
 	}
 
 	// Track created assets and patterns
@@ -260,6 +293,15 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			hawkeyeFinding.FileData,
 		)
 
+		// Classification: Test vs Prod
+		environment := "PROD"
+		status := "pending"
+
+		if isTestArtifact(hawkeyeFinding.FilePath) || isSemanticTestData(hawkeyeFinding.SampleText) {
+			environment = "TEST"
+			status = "ignored"
+		}
+
 		// Create finding with deduplication hash
 		finding := &entity.Finding{
 			ID:                  uuid.New(),
@@ -272,16 +314,14 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			Severity:            dynamicSeverity, // Now calculated from classification+confidence+context
 			SeverityDescription: fmt.Sprintf("Risk Score: %d/100 | %s", riskScore, decision.Justification),
 			ConfidenceScore:     &decision.FinalScore,
+			Environment:         environment,
 			Context:             decision.SignalBreakdown,
 			EnrichmentSignals:   enrichmentMap,
 			EnrichmentScore:     &enrichmentScore,
 			EnrichmentFailed:    enrichmentSignals.EnrichmentFailed,
-			// New field for deduplication:
-			// NormalizedValueHash: valueHash,  // Uncomment when entity.Finding has this field
+			CreatedAt:           time.Now(),
+			UpdatedAt:           time.Now(),
 		}
-
-		// TODO: When entity.Finding has NormalizedValueHash field, uncomment above
-		// For now, the unique index will prevent true duplicates at DB level
 
 		if err := tx.CreateFinding(ctx, finding); err != nil {
 			// Check if error is due to duplicate (unique constraint violation)
@@ -311,11 +351,11 @@ func (s *IngestionService) IngestScan(ctx context.Context, input *HawkeyeScanInp
 			return nil, fmt.Errorf("failed to create classification: %w", err)
 		}
 
-		// Create review state
+		// Create review state (Logic moved upstream)
 		reviewState := &entity.ReviewState{
 			ID:        uuid.New(),
 			FindingID: finding.ID,
-			Status:    "pending",
+			Status:    status,
 		}
 
 		if err := tx.CreateReviewState(ctx, reviewState); err != nil {
@@ -739,6 +779,9 @@ func calculateComprehensiveRiskScore(classification, confidence string, fileData
 	// This ensures classification type dominates, but confidence/context can adjust prioritization
 
 	baseScore := classificationWeight * 0.6
+
+	//     environment = "TEST"
+	// }
 	confidenceScore := (confidenceMultiplier * 100) * 0.2
 	contextScore := (contextMultiplier * 100) * 0.2
 
@@ -766,6 +809,49 @@ func (s *IngestionService) ClearAllScanData(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to clear scan data: %w", err)
 	}
+
 	log.Println("✅ All previous scan data cleared successfully")
 	return nil
+}
+
+// isTestArtifact checks if the file path indicates a test or mock file
+func isTestArtifact(path string) bool {
+	lowerPath := strings.ToLower(path)
+
+	// Check for common test directories
+	if strings.Contains(lowerPath, "/test/") ||
+		strings.Contains(lowerPath, "/tests/") ||
+		strings.Contains(lowerPath, "/mock/") ||
+		strings.Contains(lowerPath, "/mocks/") ||
+		strings.Contains(lowerPath, "/fixture/") ||
+		strings.Contains(lowerPath, "/fixtures/") ||
+		strings.Contains(lowerPath, "/spec/") ||
+		strings.Contains(lowerPath, "/specs/") {
+		return true
+	}
+
+	// Check for common test file extensions/suffixes
+	if strings.HasSuffix(lowerPath, "_test.go") ||
+		strings.HasSuffix(lowerPath, ".test.ts") ||
+		strings.HasSuffix(lowerPath, ".spec.ts") ||
+		strings.HasSuffix(lowerPath, ".test.js") ||
+		strings.HasSuffix(lowerPath, ".spec.js") ||
+		strings.HasSuffix(lowerPath, ".mock.json") ||
+		strings.HasSuffix(lowerPath, ".test.json") {
+		return true
+	}
+
+	return false
+}
+
+// isSemanticTestData checks if the sample text contains common test data patterns
+func isSemanticTestData(sampleText string) bool {
+	lower := strings.ToLower(sampleText)
+	if strings.Contains(lower, "john doe") ||
+		strings.Contains(lower, "example") ||
+		strings.Contains(lower, "test@") ||
+		strings.Contains(sampleText, "1234567890") {
+		return true
+	}
+	return false
 }

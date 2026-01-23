@@ -196,3 +196,13 @@ node_modules/
 # Sensitive configs
 apps/scanner/config/connection.yml
 connection.yml
+
+# Compiled Binaries
+apps/backend/main
+
+# Test Artifacts
+playwright-report/
+test-results/
+apps/frontend/playwright-report/
+apps/frontend/test-results/
+apps/frontend/e2e/

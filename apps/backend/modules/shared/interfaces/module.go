@@ -44,6 +44,7 @@ type ModuleDependencies struct {
 	AssetManager     AssetManager
 	FindingsProvider FindingsProvider
 	LineageSync      LineageSync
+	AuditLogger      AuditLogger
 }
 
 // ModuleRegistry manages all registered modules

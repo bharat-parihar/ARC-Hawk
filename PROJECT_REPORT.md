@@ -61,7 +61,7 @@ Scanner SDK → Backend API → PostgreSQL → Neo4j → Frontend Dashboard
 4. **Neo4j**
    - Graph database for lineage visualization
    - 3-level hierarchy: System → Asset → PII_Category
-   - Edges: `SYSTEM_OWNS_ASSET`, `ASSET_CONTAINS_PII`
+   - Edges: `SYSTEM_OWNS_ASSET`, `EXPOSES`
    - Optimized Cypher queries
 
 5. **Frontend (Next.js)**

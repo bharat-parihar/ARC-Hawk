@@ -2,7 +2,7 @@ VERSION = "0.3.39"
 
 from setuptools import setup, find_packages
 
-with open("readme.md", "r", encoding="utf-8") as f:
+with open("README.md", "r", encoding="utf-8") as f:
     long_description = f.read()
 
 with open("requirements.txt", "r", encoding="utf-8") as f:
